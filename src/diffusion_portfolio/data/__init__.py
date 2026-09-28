@@ -23,6 +23,15 @@ from diffusion_portfolio.data.fama_french import (
     read_ff3_daily_zip,
 )
 
+from diffusion_portfolio.data.dataset import (
+    DatasetSplits,
+    LoaderSplits,
+    ReturnWindowDataset,
+    build_window_datasets,
+    collate_return_batch,
+    make_dataloaders,
+)
+
 from diffusion_portfolio.data.normalization import (
     TrainStandardizer,
 )
@@ -68,4 +77,10 @@ __all__ = [
     "read_ff3_daily_zip",
     "to_excess_returns",
     "TrainStandardizer",
+    "DatasetSplits",
+    "LoaderSplits",
+    "ReturnWindowDataset",
+    "build_window_datasets",
+    "collate_return_batch",
+    "make_dataloaders",
 ]
