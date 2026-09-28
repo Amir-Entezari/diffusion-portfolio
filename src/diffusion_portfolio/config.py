@@ -29,10 +29,22 @@ class DataConfig:
 @dataclass(frozen=True)
 class ModelConfig:
     type: str = "conditional_diffusion"
+
     condition_dim: int = 128
+    history_hidden_dim: int = 256
+
     diffusion_steps: int = 100
     schedule: str = "cosine"
-    channels: tuple[int, ...] = (32, 64, 128)
+    prediction_type: str = "epsilon"
+
+    time_embed_dim: int = 128
+    channels: tuple[int, ...] = (
+        32,
+        64,
+        128,
+    )
+
+    n_res_blocks: int = 1
 
 
 @dataclass(frozen=True)
@@ -123,5 +135,25 @@ def load_config(path: str | Path) -> MVPConfig:
         raise ValueError("condition_dim must be positive")
     if not cfg.model.channels:
         raise ValueError("model.channels cannot be empty")
+        if cfg.model.history_hidden_dim <= 0:
+        raise ValueError(
+            "history_hidden_dim must be positive"
+        )
+
+    if cfg.model.time_embed_dim <= 0:
+        raise ValueError(
+            "time_embed_dim must be positive"
+        )
+
+    if cfg.model.n_res_blocks <= 0:
+        raise ValueError(
+            "n_res_blocks must be positive"
+        )
+
+    if cfg.model.prediction_type != "epsilon":
+        raise ValueError(
+            "Only epsilon prediction is supported "
+            "for the vanilla MVP"
+        )
 
     return cfg

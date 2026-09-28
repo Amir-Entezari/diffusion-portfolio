@@ -12,15 +12,22 @@ data:
 
   lookback: 60
   horizon: 1
-  
+
   return_scaling: train_zscore
 
 model:
   type: conditional_diffusion
+
   condition_dim: 128
+  history_hidden_dim: 256
+
   diffusion_steps: 100
   schedule: cosine
+  prediction_type: epsilon
+
+  time_embed_dim: 128
   channels: [32, 64, 128]
+  n_res_blocks: 1
 
 training:
   batch_size: 128

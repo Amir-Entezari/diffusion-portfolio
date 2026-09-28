@@ -23,6 +23,10 @@ def test_config_values_reach_instantiated_components(tmp_path: Path):
             "diffusion_steps": 37,
             "schedule": "linear",
             "channels": [16, 32],
+            "history_hidden_dim": 48,
+            "time_embed_dim": 20,
+            "n_res_blocks": 2,
+            "prediction_type": "epsilon",
         },
         "training": {},
         "portfolio": {"transaction_cost_bps": 23.0},
@@ -32,6 +36,25 @@ def test_config_values_reach_instantiated_components(tmp_path: Path):
     path.write_text(yaml.safe_dump(raw))
 
     cfg = load_config(path)
+    assert (
+        cfg.model.history_hidden_dim
+        == 48
+    )
+
+    assert (
+        cfg.model.time_embed_dim
+        == 20
+    )
+
+    assert (
+        cfg.model.n_res_blocks
+        == 2
+    )
+
+    assert (
+        cfg.model.prediction_type
+        == "epsilon"
+    )
     schedule = NoiseSchedule(
         n_steps=cfg.model.diffusion_steps,
         schedule_type=cfg.model.schedule,
