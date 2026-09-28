@@ -89,26 +89,6 @@ def test_excess_returns_preserve_dates_and_columns():
     assert excess.columns == table.columns
 
 
-def test_rf_dates_are_aligned_by_calendar_date():
-    table = make_return_table()
-
-    reversed_dates = table.dates[::-1]
-
-    rf = RiskFreeSeries(
-        dates=reversed_dates,
-        returns=np.array(
-            [
-                0.003,
-                0.002,
-                0.001,
-            ],
-            dtype=np.float32,
-        ),
-    )
-
-    # RiskFreeSeries itself requires chronological
-    # ordering, so construct an equivalent shifted test
-    # using an extra earlier date instead.
     
 def test_extra_rf_dates_do_not_change_alignment():
     table = make_return_table()
