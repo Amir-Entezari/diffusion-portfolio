@@ -8,8 +8,8 @@ The proposal components are hypotheses to be tested one by one, not assumed-vali
 
 ## Current stage
 
-See [`ROADMAP.md`](ROADMAP.md). The current task is repository refactoring before the
-Kenneth French 12 Industry Portfolios data pipeline is added.
+See [`ROADMAP.md`](ROADMAP.md). The current task is building and validating the Kenneth French 12 Industry
+Portfolios data pipeline for the scientific MVP.
 
 ## Install
 
@@ -34,13 +34,3 @@ pytest
 
 The notebook is only an orchestrator. Source code lives in this repository. Kaggle should
 clone/pull an exact commit, install the package, run tests, then execute scripts/configs.
-
-## Historical scaffold
-
-The untouched AI-generated code received from Matin is preserved in git tag:
-
-```bash
-git checkout matin-scaffold-v0
-```
-
-Do not treat that tag as scientifically validated.

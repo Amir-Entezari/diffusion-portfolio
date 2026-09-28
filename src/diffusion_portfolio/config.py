@@ -5,10 +5,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 import yaml
 
 
-@dataclass(frozen=True)
 @dataclass(frozen=True)
 class DataConfig:
     dataset: str = "ken_french_12"
