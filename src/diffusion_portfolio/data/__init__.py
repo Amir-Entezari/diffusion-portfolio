@@ -16,6 +16,11 @@ from diffusion_portfolio.data.windows import (
     make_windows,
 )
 
+from diffusion_portfolio.data.splits import (
+    WindowSplits,
+    split_windows_chronologically,
+)
+
 __all__ = [
     "DEFAULT_KF12_CACHE",
     "INDUSTRY_COLUMNS",
@@ -28,4 +33,6 @@ __all__ = [
     "make_windows",
     "parse_kf12_daily_text",
     "read_kf12_daily_zip",
+    "WindowSplits",
+    "split_windows_chronologically",
 ]
