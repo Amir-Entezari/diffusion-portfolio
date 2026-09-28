@@ -135,7 +135,7 @@ def load_config(path: str | Path) -> MVPConfig:
         raise ValueError("condition_dim must be positive")
     if not cfg.model.channels:
         raise ValueError("model.channels cannot be empty")
-        if cfg.model.history_hidden_dim <= 0:
+    if cfg.model.history_hidden_dim <= 0:
         raise ValueError(
             "history_hidden_dim must be positive"
         )
