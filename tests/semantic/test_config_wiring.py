@@ -9,7 +9,14 @@ from diffusion_portfolio.models.diffusion import NoiseSchedule, ScoreNetwork
 def test_config_values_reach_instantiated_components(tmp_path: Path):
     raw = {
         "seed": 7,
-        "data": {"lookback": 40, "horizon": 1, "train_ratio": 0.6, "val_ratio": 0.2},
+        "data": {
+            "lookback": 40,
+            "horizon": 1,
+            "sample_start": "1960-01-01",
+            "sample_end": "2020-12-31",
+            "train_end": "1999-12-31",
+            "val_end": "2005-12-31",
+        },
         "model": {
             "condition_dim": 24,
             "diffusion_steps": 37,

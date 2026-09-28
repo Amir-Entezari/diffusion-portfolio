@@ -3,10 +3,15 @@ seed: 42
 data:
   dataset: ken_french_12
   frequency: daily
+
+  sample_start: "1958-01-01"
+  sample_end: "2023-12-31"
+
+  train_end: "1999-12-31"
+  val_end: "2004-12-31"
+
   lookback: 60
   horizon: 1
-  train_ratio: 0.70
-  val_ratio: 0.15
 
 model:
   type: conditional_diffusion

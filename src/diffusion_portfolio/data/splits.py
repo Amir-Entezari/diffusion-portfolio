@@ -11,6 +11,8 @@ Targets themselves remain chronologically separated.
 
 from __future__ import annotations
 
+import pandas as pd
+
 from dataclasses import dataclass
 
 from diffusion_portfolio.data.windows import WindowedReturns
@@ -158,4 +160,90 @@ def split_windows_chronologically(
         train=train,
         val=val,
         test=test,
+    )
+    
+    
+
+def split_windows_by_date(
+    windows: WindowedReturns,
+    *,
+    train_end: str,
+    val_end: str,
+    test_end: str | None = None,
+) -> WindowSplits:
+    """Split samples according to their target dates.
+
+    Boundaries are inclusive:
+
+        train: target_date <= train_end
+
+        val:
+            train_end < target_date <= val_end
+
+        test:
+            val_end < target_date <= test_end
+
+    If ``test_end`` is None, every observation after ``val_end`` is
+    assigned to the test set.
+
+    Notes
+    -----
+    Splitting is based on target dates, not history dates. A validation
+    or test sample may therefore use earlier observations in its history,
+    which is valid because those observations would have been available
+    at prediction time.
+    """
+
+    train_end_ts = pd.Timestamp(train_end)
+    val_end_ts = pd.Timestamp(val_end)
+
+    if train_end_ts >= val_end_ts:
+        raise ValueError(
+            "train_end must occur before val_end"
+        )
+
+    dates = windows.target_dates
+
+    train_mask = dates <= train_end_ts
+
+    val_mask = (
+        (dates > train_end_ts)
+        & (dates <= val_end_ts)
+    )
+
+    if test_end is None:
+        test_mask = dates > val_end_ts
+    else:
+        test_end_ts = pd.Timestamp(test_end)
+
+        if val_end_ts >= test_end_ts:
+            raise ValueError(
+                "val_end must occur before test_end"
+            )
+
+        test_mask = (
+            (dates > val_end_ts)
+            & (dates <= test_end_ts)
+        )
+
+    if not train_mask.any():
+        raise ValueError("Training split is empty")
+
+    if not val_mask.any():
+        raise ValueError("Validation split is empty")
+
+    if not test_mask.any():
+        raise ValueError("Test split is empty")
+
+    def select(mask) -> WindowedReturns:
+        return WindowedReturns(
+            history=windows.history[mask],
+            target=windows.target[mask],
+            target_dates=windows.target_dates[mask],
+        )
+
+    return WindowSplits(
+        train=select(train_mask),
+        val=select(val_mask),
+        test=select(test_mask),
     )

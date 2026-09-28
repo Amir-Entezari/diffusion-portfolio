@@ -10,6 +10,7 @@ from diffusion_portfolio.data.ken_french import (
     load_kf12_daily,
     parse_kf12_daily_text,
     read_kf12_daily_zip,
+    slice_return_table
 )
 from diffusion_portfolio.data.windows import (
     WindowedReturns,
@@ -18,8 +19,10 @@ from diffusion_portfolio.data.windows import (
 
 from diffusion_portfolio.data.splits import (
     WindowSplits,
+    split_windows_by_date,
     split_windows_chronologically,
 )
+
 
 __all__ = [
     "DEFAULT_KF12_CACHE",
@@ -35,4 +38,6 @@ __all__ = [
     "read_kf12_daily_zip",
     "WindowSplits",
     "split_windows_chronologically",
+    "slice_return_table",
+    "split_windows_by_date",
 ]

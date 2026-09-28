@@ -9,13 +9,19 @@ import yaml
 
 
 @dataclass(frozen=True)
+@dataclass(frozen=True)
 class DataConfig:
     dataset: str = "ken_french_12"
     frequency: str = "daily"
+
+    sample_start: str = "1958-01-01"
+    sample_end: str = "2023-12-31"
+
+    train_end: str = "1999-12-31"
+    val_end: str = "2004-12-31"
+
     lookback: int = 60
     horizon: int = 1
-    train_ratio: float = 0.70
-    val_ratio: float = 0.15
 
 
 @dataclass(frozen=True)
@@ -84,15 +90,23 @@ def load_config(path: str | Path) -> MVPConfig:
         portfolio=_section(PortfolioConfig, raw, "portfolio"),
         evaluation=_section(EvaluationConfig, raw, "evaluation"),
     )
+    sample_start = pd.Timestamp(cfg.data.sample_start)
+    sample_end = pd.Timestamp(cfg.data.sample_end)
+    train_end = pd.Timestamp(cfg.data.train_end)
+    val_end = pd.Timestamp(cfg.data.val_end)
 
+    if not (
+        sample_start
+        < train_end
+        < val_end
+        < sample_end
+    ):
+        raise ValueError(
+            "Expected chronological ordering: "
+            "sample_start < train_end < val_end < sample_end"
+        )
     if cfg.data.lookback <= 0 or cfg.data.horizon <= 0:
         raise ValueError("lookback and horizon must be positive")
-    if not (0 < cfg.data.train_ratio < 1):
-        raise ValueError("train_ratio must be in (0, 1)")
-    if not (0 <= cfg.data.val_ratio < 1):
-        raise ValueError("val_ratio must be in [0, 1)")
-    if cfg.data.train_ratio + cfg.data.val_ratio >= 1:
-        raise ValueError("train_ratio + val_ratio must be < 1")
     if cfg.model.diffusion_steps <= 1:
         raise ValueError("diffusion_steps must be > 1")
     if cfg.model.condition_dim <= 0:

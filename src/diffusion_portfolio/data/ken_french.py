@@ -384,3 +384,50 @@ def load_kf12_daily(
         download_kf12_daily(path)
 
     return read_kf12_daily_zip(path)
+
+
+
+def slice_return_table(
+    table: ReturnTable,
+    start: str | pd.Timestamp,
+    end: str | pd.Timestamp,
+) -> ReturnTable:
+    """Restrict a return table to an inclusive calendar period.
+
+    Slicing is performed before sliding windows are constructed so that
+    histories cannot reach outside the declared experimental sample.
+
+    Parameters
+    ----------
+    table:
+        Full chronological return table.
+
+    start:
+        Inclusive first date.
+
+    end:
+        Inclusive final date.
+    """
+
+    start = pd.Timestamp(start)
+    end = pd.Timestamp(end)
+
+    if start > end:
+        raise ValueError("start date must not be after end date")
+
+    mask = (
+        (table.dates >= start)
+        & (table.dates <= end)
+    )
+
+    if not mask.any():
+        raise ValueError(
+            f"No observations found between {start.date()} "
+            f"and {end.date()}"
+        )
+
+    return ReturnTable(
+        dates=table.dates[mask],
+        returns=table.returns[mask].copy(),
+        columns=table.columns,
+    )

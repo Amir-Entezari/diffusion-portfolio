@@ -6,9 +6,10 @@ from diffusion_portfolio.data import (
     INDUSTRY_COLUMNS,
     dataframe_to_return_table,
     make_windows,
+    slice_return_table,
+    split_windows_by_date,
     split_windows_chronologically,
 )
-
 
 def make_sequential_table(n_days: int = 160):
     dates = pd.date_range(
@@ -201,3 +202,57 @@ def test_invalid_ratios_are_rejected():
             train_ratio=0.8,
             val_ratio=0.3,
         )
+        
+        
+def test_return_table_can_be_restricted_to_declared_sample():
+    table = make_sequential_table(160)
+
+    start = table.dates[20]
+    end = table.dates[119]
+
+    subset = slice_return_table(
+        table,
+        start=start,
+        end=end,
+    )
+
+    assert subset.dates[0] == start
+    assert subset.dates[-1] == end
+    assert len(subset.dates) == 100
+
+
+def test_date_based_split_uses_target_dates():
+    table = make_sequential_table(200)
+
+    windows = make_windows(
+        table,
+        lookback=20,
+        horizon=1,
+    )
+
+    train_end = windows.target_dates[99]
+    val_end = windows.target_dates[139]
+    test_end = windows.target_dates[-1]
+
+    splits = split_windows_by_date(
+        windows,
+        train_end=str(train_end.date()),
+        val_end=str(val_end.date()),
+        test_end=str(test_end.date()),
+    )
+
+    assert splits.train.target_dates[-1] <= train_end
+
+    assert (
+        splits.val.target_dates[0]
+        > train_end
+    )
+    assert (
+        splits.val.target_dates[-1]
+        <= val_end
+    )
+
+    assert (
+        splits.test.target_dates[0]
+        > val_end
+    )
