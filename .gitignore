@@ -12,3 +12,4 @@ data/processed/
 *.pt
 *.pth
 *.ckpt
+*.egg-info/
