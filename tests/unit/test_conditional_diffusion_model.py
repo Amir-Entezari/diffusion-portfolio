@@ -283,3 +283,192 @@ def test_multistep_target_is_rejected():
             history,
             target,
         )
+        
+        
+def test_sampler_returns_expected_scenario_shape():
+    model = make_model()
+
+    history = torch.randn(
+        3,
+        60,
+        12,
+    )
+
+    samples = model.sample(
+        history,
+        n_scenarios=5,
+    )
+
+    assert samples.shape == (
+        3,
+        5,
+        12,
+    )
+
+    assert torch.isfinite(
+        samples
+    ).all()
+    
+    
+def test_sampler_is_reproducible_with_fixed_seed():
+    model = make_model()
+
+    history = torch.randn(
+        2,
+        60,
+        12,
+    )
+
+    torch.manual_seed(
+        123
+    )
+
+    samples_a = model.sample(
+        history,
+        n_scenarios=3,
+    )
+
+    torch.manual_seed(
+        123
+    )
+
+    samples_b = model.sample(
+        history,
+        n_scenarios=3,
+    )
+
+    torch.testing.assert_close(
+        samples_a,
+        samples_b,
+    )
+    
+    
+def test_sampler_rejects_wrong_initial_noise_shape():
+    model = make_model()
+
+    history = torch.randn(
+        2,
+        60,
+        12,
+    )
+
+    wrong_noise = torch.randn(
+        2,
+        4,
+        11,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="initial_noise",
+    ):
+        model.sample(
+            history,
+            n_scenarios=4,
+            initial_noise=wrong_noise,
+        )
+        
+        
+def test_reverse_step_at_zero_is_deterministic():
+    model = make_model()
+
+    history = torch.randn(
+        4,
+        60,
+        12,
+    )
+
+    condition = (
+        model.history_encoder(
+            history
+        )
+    )
+
+    x_t = torch.randn(
+        4,
+        12,
+    )
+
+    timesteps = torch.zeros(
+        4,
+        dtype=torch.long,
+    )
+
+    noise_a = torch.randn(
+        4,
+        12,
+    )
+
+    noise_b = torch.randn(
+        4,
+        12,
+    )
+
+    result_a = model.reverse_step(
+        x_t,
+        timesteps,
+        condition,
+        noise=noise_a,
+    )
+
+    result_b = model.reverse_step(
+        x_t,
+        timesteps,
+        condition,
+        noise=noise_b,
+    )
+
+    torch.testing.assert_close(
+        result_a,
+        result_b,
+    )
+    
+def test_sampler_depends_on_history_condition():
+    torch.manual_seed(
+        42
+    )
+
+    model = make_model()
+
+    history_a = torch.zeros(
+        1,
+        60,
+        12,
+    )
+
+    history_b = torch.ones(
+        1,
+        60,
+        12,
+    )
+
+    initial_noise = torch.randn(
+        1,
+        2,
+        12,
+    )
+
+    torch.manual_seed(
+        123
+    )
+
+    samples_a = model.sample(
+        history_a,
+        n_scenarios=2,
+        initial_noise=initial_noise,
+    )
+
+    torch.manual_seed(
+        123
+    )
+
+    samples_b = model.sample(
+        history_b,
+        n_scenarios=2,
+        initial_noise=initial_noise,
+    )
+
+    assert not torch.allclose(
+        samples_a,
+        samples_b,
+    )
