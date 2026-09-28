@@ -54,6 +54,9 @@ class TrainingConfig:
     learning_rate: float = 3e-4
     weight_decay: float = 1e-5
 
+    gradient_clip_norm: float = 1.0
+    validation_seed: int = 12345
+
 
 @dataclass(frozen=True)
 class PortfolioConfig:
@@ -155,5 +158,13 @@ def load_config(path: str | Path) -> MVPConfig:
             "Only epsilon prediction is supported "
             "for the vanilla MVP"
         )
+    if cfg.training.gradient_clip_norm <= 0:
+        raise ValueError(
+            "gradient_clip_norm must be positive"
+        )
 
+    if cfg.training.validation_seed < 0:
+        raise ValueError(
+            "validation_seed cannot be negative"
+        )
     return cfg

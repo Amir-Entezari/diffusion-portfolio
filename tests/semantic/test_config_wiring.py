@@ -28,7 +28,10 @@ def test_config_values_reach_instantiated_components(tmp_path: Path):
             "n_res_blocks": 2,
             "prediction_type": "epsilon",
         },
-        "training": {},
+        "training": {
+            "gradient_clip_norm": 0.75,
+            "validation_seed": 987,
+        },
         "portfolio": {"transaction_cost_bps": 23.0},
         "evaluation": {},
     }
@@ -66,7 +69,15 @@ def test_config_values_reach_instantiated_components(tmp_path: Path):
         condition_dim=cfg.model.condition_dim,
         n_res_blocks=1,
     )
+    assert (
+        cfg.training.gradient_clip_norm
+        == 0.75
+    )
 
+    assert (
+        cfg.training.validation_seed
+        == 987
+    )
     assert cfg.seed == 7
     assert cfg.data.lookback == 40
     assert cfg.data.return_scaling == "none"
