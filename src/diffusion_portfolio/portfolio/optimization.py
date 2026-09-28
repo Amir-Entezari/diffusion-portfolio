@@ -13,7 +13,7 @@ No transaction-cost penalty is applied here yet.
 from __future__ import annotations
 
 import numpy as np
-from scipy.optimize import minimize
+from scipy.optimize import linprog, minimize
 
 
 def _validate_moments(
@@ -350,6 +350,259 @@ def solve_long_only_tangency(
 
     weights = np.clip(
         result.x,
+        0.0,
+        1.0,
+    )
+
+    weights /= weights.sum()
+
+    return weights
+
+
+
+
+def solve_long_only_mean_cvar(
+    scenarios: np.ndarray,
+    *,
+    confidence_level: float = 0.95,
+    minimum_expected_return: float | None = None,
+) -> np.ndarray:
+    """Solve a long-only mean-CVaR portfolio from empirical scenarios.
+
+    Parameters
+    ----------
+    scenarios:
+        Scenario excess returns with shape [scenarios, assets].
+
+    confidence_level:
+        CVaR confidence level, e.g. 0.95.
+
+    minimum_expected_return:
+        Optional lower bound on the portfolio's sample expected return.
+
+        If supplied:
+
+            mean(scenarios) @ weights >= minimum_expected_return
+
+    Notes
+    -----
+    Loss in scenario s is:
+
+        L_s(w) = -r_s @ w
+
+    Using the Rockafellar-Uryasev representation:
+
+        CVaR_alpha =
+            zeta
+            + 1 / ((1-alpha) * S) * sum_s u_s
+
+    subject to:
+
+        u_s >= L_s(w) - zeta
+        u_s >= 0
+
+    The full problem is therefore a linear program.
+    """
+
+    scenarios = np.asarray(
+        scenarios,
+        dtype=np.float64,
+    )
+
+    if scenarios.ndim != 2:
+        raise ValueError(
+            "scenarios must have shape [scenarios, assets]"
+        )
+
+    n_scenarios, n_assets = scenarios.shape
+
+    if n_scenarios < 2:
+        raise ValueError(
+            "At least two scenarios are required"
+        )
+
+    if n_assets < 1:
+        raise ValueError(
+            "At least one asset is required"
+        )
+
+    if not np.isfinite(
+        scenarios
+    ).all():
+        raise ValueError(
+            "scenarios contain NaN or infinite values"
+        )
+
+    if not (
+        0.0 < confidence_level < 1.0
+    ):
+        raise ValueError(
+            "confidence_level must lie in (0, 1)"
+        )
+
+    mean_returns = scenarios.mean(
+        axis=0
+    )
+
+    if (
+        minimum_expected_return is not None
+        and minimum_expected_return
+        > mean_returns.max() + 1e-12
+    ):
+        raise ValueError(
+            "minimum_expected_return is infeasible"
+        )
+
+    # Variables:
+    #
+    # [w_1, ..., w_N, zeta, u_1, ..., u_S]
+    #
+    n_variables = (
+        n_assets
+        + 1
+        + n_scenarios
+    )
+
+    zeta_index = n_assets
+    u_start = n_assets + 1
+
+    # ---------------------------------------------------------
+    # Objective
+    # ---------------------------------------------------------
+    objective = np.zeros(
+        n_variables,
+        dtype=np.float64,
+    )
+
+    objective[zeta_index] = 1.0
+
+    objective[u_start:] = (
+        1.0
+        / (
+            (1.0 - confidence_level)
+            * n_scenarios
+        )
+    )
+
+    # ---------------------------------------------------------
+    # Inequality constraints
+    # ---------------------------------------------------------
+    #
+    # u_s >= -r_s @ w - zeta
+    #
+    # equivalent to:
+    #
+    # -r_s @ w - zeta - u_s <= 0
+    #
+    rows = []
+    bounds = []
+
+    for scenario_idx in range(
+        n_scenarios
+    ):
+        row = np.zeros(
+            n_variables,
+            dtype=np.float64,
+        )
+
+        row[:n_assets] = (
+            -scenarios[scenario_idx]
+        )
+
+        row[zeta_index] = -1.0
+
+        row[
+            u_start + scenario_idx
+        ] = -1.0
+
+        rows.append(row)
+        bounds.append(0.0)
+
+    # Optional mean-return constraint:
+    #
+    # mu @ w >= target
+    #
+    # -> -mu @ w <= -target
+    if minimum_expected_return is not None:
+        row = np.zeros(
+            n_variables,
+            dtype=np.float64,
+        )
+
+        row[:n_assets] = (
+            -mean_returns
+        )
+
+        rows.append(row)
+
+        bounds.append(
+            -float(
+                minimum_expected_return
+            )
+        )
+
+    A_ub = np.asarray(
+        rows,
+        dtype=np.float64,
+    )
+
+    b_ub = np.asarray(
+        bounds,
+        dtype=np.float64,
+    )
+
+    # ---------------------------------------------------------
+    # Fully invested
+    # ---------------------------------------------------------
+    A_eq = np.zeros(
+        (1, n_variables),
+        dtype=np.float64,
+    )
+
+    A_eq[
+        0,
+        :n_assets,
+    ] = 1.0
+
+    b_eq = np.array(
+        [1.0],
+        dtype=np.float64,
+    )
+
+    # Long-only weights.
+    #
+    # zeta must be unbounded because VaR/loss may be negative.
+    #
+    # u_s >= 0.
+    variable_bounds = (
+        [(0.0, 1.0)] * n_assets
+        + [(None, None)]
+        + [(0.0, None)] * n_scenarios
+    )
+
+    result = linprog(
+        c=objective,
+        A_ub=A_ub,
+        b_ub=b_ub,
+        A_eq=A_eq,
+        b_eq=b_eq,
+        bounds=variable_bounds,
+        method="highs",
+    )
+
+    if not result.success:
+        raise RuntimeError(
+            "Mean-CVaR optimization failed: "
+            f"{result.message}"
+        )
+
+    weights = result.x[
+        :n_assets
+    ]
+
+    # Remove tiny numerical LP violations.
+    weights = np.clip(
+        weights,
         0.0,
         1.0,
     )

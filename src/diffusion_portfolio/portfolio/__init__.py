@@ -10,6 +10,7 @@ from diffusion_portfolio.portfolio.optimization import (
     regularize_covariance,
     solve_long_only_minimum_variance,
     solve_long_only_tangency,
+    solve_long_only_mean_cvar,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "regularize_covariance",
     "solve_long_only_minimum_variance",
     "solve_long_only_tangency",
+    "solve_long_only_mean_cvar",
 ]

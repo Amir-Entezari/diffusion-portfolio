@@ -6,6 +6,7 @@ import numpy as np
 
 from diffusion_portfolio.portfolio.optimization import (
     equal_weight,
+    solve_long_only_mean_cvar,
     solve_long_only_minimum_variance,
     solve_long_only_tangency,
 )
@@ -15,6 +16,7 @@ SUPPORTED_BASELINES = (
     "equal_weight",
     "historical_min_variance",
     "historical_tangency",
+    "historical_mean_cvar",
 )
 
 
@@ -72,6 +74,7 @@ def historical_portfolio_weights(
     *,
     method: str,
     ridge_multiplier: float = 1e-6,
+    cvar_confidence_level: float = 0.95,
 ) -> np.ndarray:
     """Construct one portfolio from each historical window.
 
@@ -163,5 +166,25 @@ def historical_portfolio_weights(
                     ),
                 )
             )
+        elif (
+            method
+            == "historical_mean_cvar"
+        ):
+            # Estimated return of the equal-weight portfolio
+            # over exactly the same historical information set.
+            equal_weight_mean = float(
+                mean.mean()
+            )
 
+            weights[t] = (
+                solve_long_only_mean_cvar(
+                    histories[t],
+                    confidence_level=(
+                        cvar_confidence_level
+                    ),
+                    minimum_expected_return=(
+                        equal_weight_mean
+                    ),
+                )
+            )
     return weights
