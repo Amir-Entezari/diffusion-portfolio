@@ -256,3 +256,29 @@ def test_date_based_split_uses_target_dates():
         splits.test.target_dates[0]
         > val_end
     )
+    
+def test_date_based_split_rejects_multistep_targets():
+    table = make_sequential_table(250)
+
+    windows = make_windows(
+        table,
+        lookback=60,
+        horizon=5,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="horizon=1",
+    ):
+        split_windows_by_date(
+            windows,
+            train_end=str(
+                windows.target_dates[99].date()
+            ),
+            val_end=str(
+                windows.target_dates[139].date()
+            ),
+            test_end=str(
+                windows.target_dates[-1].date()
+            ),
+        )

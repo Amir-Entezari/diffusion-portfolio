@@ -194,6 +194,13 @@ def split_windows_by_date(
     at prediction time.
     """
 
+    horizon = windows.target.shape[1]
+
+    if horizon != 1:
+        raise ValueError(
+            "split_windows_by_date currently supports horizon=1 only; "
+            "multi-step targets require explicit boundary purging"
+        )
     train_end_ts = pd.Timestamp(train_end)
     val_end_ts = pd.Timestamp(val_end)
 
