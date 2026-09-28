@@ -16,6 +16,7 @@ def test_config_values_reach_instantiated_components(tmp_path: Path):
             "sample_end": "2020-12-31",
             "train_end": "1999-12-31",
             "val_end": "2005-12-31",
+            "return_scaling": "none",
         },
         "model": {
             "condition_dim": 24,
@@ -45,6 +46,7 @@ def test_config_values_reach_instantiated_components(tmp_path: Path):
 
     assert cfg.seed == 7
     assert cfg.data.lookback == 40
+    assert cfg.data.return_scaling == "none"
     assert cfg.portfolio.transaction_cost_bps == 23.0
     assert schedule.n_steps == 37
     assert net.time_embed[1].out_features == 16

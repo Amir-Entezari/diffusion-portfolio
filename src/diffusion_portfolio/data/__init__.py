@@ -10,7 +10,7 @@ from diffusion_portfolio.data.ken_french import (
     load_kf12_daily,
     parse_kf12_daily_text,
     read_kf12_daily_zip,
-    slice_return_table
+    slice_return_table,
 )
 
 from diffusion_portfolio.data.fama_french import (
@@ -21,6 +21,10 @@ from diffusion_portfolio.data.fama_french import (
     load_daily_risk_free,
     parse_ff3_daily_text,
     read_ff3_daily_zip,
+)
+
+from diffusion_portfolio.data.normalization import (
+    TrainStandardizer,
 )
 
 from diffusion_portfolio.data.returns import (
@@ -63,4 +67,5 @@ __all__ = [
     "parse_ff3_daily_text",
     "read_ff3_daily_zip",
     "to_excess_returns",
+    "TrainStandardizer",
 ]

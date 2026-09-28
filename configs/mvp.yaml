@@ -12,6 +12,8 @@ data:
 
   lookback: 60
   horizon: 1
+  
+  return_scaling: train_zscore
 
 model:
   type: conditional_diffusion

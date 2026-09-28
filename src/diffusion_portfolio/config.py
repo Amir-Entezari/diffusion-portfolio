@@ -23,6 +23,8 @@ class DataConfig:
     lookback: int = 60
     horizon: int = 1
 
+    return_scaling: str = "train_zscore"
+
 
 @dataclass(frozen=True)
 class ModelConfig:
@@ -107,6 +109,14 @@ def load_config(path: str | Path) -> MVPConfig:
         )
     if cfg.data.lookback <= 0 or cfg.data.horizon <= 0:
         raise ValueError("lookback and horizon must be positive")
+    if cfg.data.return_scaling not in {
+        "none",
+        "train_zscore",
+    }:
+        raise ValueError(
+            "data.return_scaling must be one of: "
+            "'none', 'train_zscore'"
+        )
     if cfg.model.diffusion_steps <= 1:
         raise ValueError("diffusion_steps must be > 1")
     if cfg.model.condition_dim <= 0:
