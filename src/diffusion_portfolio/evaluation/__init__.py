@@ -11,6 +11,16 @@ from diffusion_portfolio.evaluation.portfolio import (
     maximum_drawdown,
 )
 
+from diffusion_portfolio.evaluation.probabilistic import (
+    DEFAULT_COVERAGE_LEVELS,
+    CalibrationMetrics,
+    ProbabilisticMetrics,
+    energy_score,
+    evaluate_probabilistic_forecast,
+    marginal_crps,
+    prediction_interval_calibration,
+)
+
 __all__ = [
     "BacktestResult",
     "PortfolioMetrics",
@@ -20,4 +30,11 @@ __all__ = [
     "cumulative_growth",
     "evaluate_portfolio",
     "maximum_drawdown",
+    "DEFAULT_COVERAGE_LEVELS",
+    "CalibrationMetrics",
+    "ProbabilisticMetrics",
+    "energy_score",
+    "evaluate_probabilistic_forecast",
+    "marginal_crps",
+    "prediction_interval_calibration",
 ]
