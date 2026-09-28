@@ -21,6 +21,11 @@ from diffusion_portfolio.evaluation.probabilistic import (
     prediction_interval_calibration,
 )
 
+from diffusion_portfolio.evaluation.frictions import (
+    FrictionBacktestResult,
+    evaluate_rebalanced_portfolio,
+)
+
 __all__ = [
     "BacktestResult",
     "PortfolioMetrics",
@@ -37,4 +42,6 @@ __all__ = [
     "evaluate_probabilistic_forecast",
     "marginal_crps",
     "prediction_interval_calibration",
+    "FrictionBacktestResult",
+    "evaluate_rebalanced_portfolio",
 ]
