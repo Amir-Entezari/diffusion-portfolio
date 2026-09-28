@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "diffusion-portfolio"
+version = "0.1.0"
+description = "Research MVP for diffusion-based portfolio optimization"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+  "pandas>=2.0",
+  "scipy>=1.10",
+  "torch>=2.0",
+  "pyyaml>=6.0",
+  "tqdm>=4.65",
+  "matplotlib>=3.7",
+]
+
+[project.optional-dependencies]
+cde = ["torchdiffeq>=0.2.3"]
+topology = ["gudhi>=3.8.0"]
+research = ["torchdiffeq>=0.2.3", "gudhi>=3.8.0"]
+dev = ["pytest>=7.3", "pytest-cov>=4.1"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

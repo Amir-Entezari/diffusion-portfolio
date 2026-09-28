@@ -1,0 +1,33 @@
+seed: 42
+
+data:
+  dataset: ken_french_12
+  frequency: daily
+  lookback: 60
+  horizon: 1
+  train_ratio: 0.70
+  val_ratio: 0.15
+
+model:
+  type: conditional_diffusion
+  condition_dim: 128
+  diffusion_steps: 100
+  schedule: cosine
+  channels: [32, 64, 128]
+
+training:
+  batch_size: 128
+  epochs: 50
+  learning_rate: 0.0003
+  weight_decay: 0.00001
+
+portfolio:
+  optimizer: mean_variance
+  allow_short: false
+  transaction_cost_bps: 10.0
+  annualization_factor: 252
+
+evaluation:
+  n_scenarios: 256
+  report_distribution_metrics: true
+  report_portfolio_metrics: true
