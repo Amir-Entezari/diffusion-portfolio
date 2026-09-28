@@ -2,7 +2,7 @@
 
 ## Current status
 
-**Current stage: Stage 1 — Repository refactor**
+**Current stage: Stage 2 — Data pipeline**
 
 The repository is being treated as an untrusted research scaffold. Passing unit tests do
 not validate the scientific claims of the proposal.
@@ -10,7 +10,7 @@ not validate the scientific claims of the proposal.
 ## Stages
 
 - [x] **0. Audit & reset** — map the generated code to the proposal; identify semantic failures.
-- [ ] **1. Refactor skeleton** — package layout, config, scripts, semantic-test framework.
+- [x] **1. Refactor skeleton** — package layout, config, scripts, semantic-test framework.
 - [ ] **2. Data pipeline** — Kenneth French 12 Industry Portfolios, chronological splits, train-only normalization.
 - [ ] **3. Evaluation first** — portfolio backtest + distribution metrics.
 - [ ] **4. Classical baselines** — equal weight, rolling MVO, rolling mean-CVaR/min-var as appropriate.
