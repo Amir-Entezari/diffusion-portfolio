@@ -1,0 +1,36 @@
+# Core Deep Learning
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Neural ODEs / CDEs (Phase 0)
+torchdiffeq>=0.2.3
+
+# Topological Data Analysis (Phase 1)
+gudhi>=3.8.0
+giotto-tda>=0.6.0
+
+# Riemannian / SPD Geometry (Phase 2)
+geomstats>=2.7.0
+
+# Optimal Transport (SGW Interface)
+POT>=0.9.0
+
+# Scientific Computing
+numpy>=1.24.0
+scipy>=1.10.0
+pandas>=2.0.0
+
+# Visualization (Academic Plots)
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Configuration
+pyyaml>=6.0
+
+# Testing
+pytest>=7.3.0
+pytest-cov>=4.1.0
+
+# Utilities
+tqdm>=4.65.0
+tensorboard>=2.13.0
