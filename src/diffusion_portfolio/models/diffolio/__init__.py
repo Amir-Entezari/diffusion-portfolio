@@ -23,6 +23,12 @@ from diffusion_portfolio.models.diffolio.correlation_target import (
     estimate_shrinkage_correlation,
 )
 
+from diffusion_portfolio.models.diffolio.correlation_loss import (
+    correlation_guided_loss,
+    diffolio_correlation_regularizer,
+    extract_asset_attention,
+)
+
 __all__ = [
     "AttentionBlockOutput",
     "CrossAttentionBlock",
@@ -37,4 +43,7 @@ __all__ = [
     "compute_training_covariance",
     "covariance_to_correlation",
     "estimate_shrinkage_correlation",
+    "correlation_guided_loss",
+    "diffolio_correlation_regularizer",
+    "extract_asset_attention",
 ]
