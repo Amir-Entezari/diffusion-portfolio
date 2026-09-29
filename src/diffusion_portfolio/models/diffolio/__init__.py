@@ -11,6 +11,10 @@ from diffusion_portfolio.models.diffolio.hierarchy import (
     DiffolioHierarchyOutput,
     SinusoidalDiffusionEmbedding,
 )
+from diffusion_portfolio.models.diffolio.denoiser import (
+    DiffolioDenoiser,
+    DiffolioDenoiserOutput,
+)
 
 __all__ = [
     "AttentionBlockOutput",
@@ -20,4 +24,6 @@ __all__ = [
     "DiffolioHierarchy",
     "DiffolioHierarchyOutput",
     "SinusoidalDiffusionEmbedding",
+    "DiffolioDenoiser",
+    "DiffolioDenoiserOutput",
 ]
