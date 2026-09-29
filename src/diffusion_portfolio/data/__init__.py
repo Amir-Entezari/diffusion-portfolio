@@ -37,6 +37,13 @@ from diffusion_portfolio.data.dataset import (
     make_dataloaders,
 )
 
+from diffusion_portfolio.data.diffolio_dataset import (
+    DiffolioWindows,
+    DiffolioWindowSplits,
+    make_diffolio_windows,
+    split_diffolio_windows_by_date,
+)
+
 from diffusion_portfolio.data.asset_characteristics import (
     CHARACTERISTIC_COLUMNS,
     AssetCharacteristicTable,
@@ -116,4 +123,8 @@ __all__ = [
     "align_systematic_covariates_to_dates",
     "build_monthly_systematic_covariates",
     "CovariateStandardizer",
+    "DiffolioWindows",
+    "DiffolioWindowSplits",
+    "make_diffolio_windows",
+    "split_diffolio_windows_by_date",
 ]
