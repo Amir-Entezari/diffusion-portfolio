@@ -463,62 +463,57 @@ class ConditionalDiffusionModel(nn.Module):
                 - 1
             ]
 
-            prediction = (
-                self.score_network(
-                    x_t,
-                    timesteps,
-                    condition,
-                )
+        prediction = (
+            self.score_network(
+                x_t,
+                timesteps,
+                condition,
             )
+        )
 
-            predicted_x0 = (
-                self._prediction_to_x0(
-                    x_t,
-                    timesteps,
-                    prediction,
-                )
+        predicted_x0 = (
+            self._prediction_to_x0(
+                x_t,
+                timesteps,
+                prediction,
             )
+        )
 
-            # q(x_{t-1} | x_t, x_0) posterior mean:
-            #
-            # coef1 * x_0 + coef2 * x_t
-            #
-            # This form is particularly useful for v-prediction because
-            # predicted_x0 remains well-conditioned at very low SNR.
-            denominator = (
+        # q(x_{t-1} | x_t, x_0) posterior mean
+        denominator = (
+            1.0
+            - alpha_bar_t
+        )
+
+        posterior_mean_coef_x0 = (
+            beta_t
+            * torch.sqrt(
+                alpha_bar_prev
+            )
+            / denominator
+        )
+
+        posterior_mean_coef_xt = (
+            torch.sqrt(
+                alpha_t
+            )
+            * (
                 1.0
-                - alpha_bar_t
+                - alpha_bar_prev
             )
+            / denominator
+        )
 
-            posterior_mean_coef_x0 = (
-                beta_t
-                * torch.sqrt(
-                    alpha_bar_prev
-                )
-                / denominator
+        mean = (
+            posterior_mean_coef_x0.unsqueeze(
+                -1
             )
-
-            posterior_mean_coef_xt = (
-                torch.sqrt(
-                    alpha_t
-                )
-                * (
-                    1.0
-                    - alpha_bar_prev
-                )
-                / denominator
+            * predicted_x0
+            + posterior_mean_coef_xt.unsqueeze(
+                -1
             )
-
-            mean = (
-                posterior_mean_coef_x0.unsqueeze(
-                    -1
-                )
-                * predicted_x0
-                + posterior_mean_coef_xt.unsqueeze(
-                    -1
-                )
-                * x_t
-            )
+            * x_t
+        )
 
         posterior_variance = (
             beta_t

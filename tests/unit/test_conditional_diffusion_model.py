@@ -258,8 +258,8 @@ def test_flat_and_horizon_one_targets_are_equivalent():
     )
 
     torch.testing.assert_close(
-        flat.predicted_noise,
-        window.predicted_noise,
+        flat.prediction,
+        window.prediction,
     )
 
 

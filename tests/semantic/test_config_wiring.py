@@ -56,7 +56,7 @@ def test_config_values_reach_instantiated_components(tmp_path: Path):
 
     assert (
         cfg.model.prediction_type
-        == "epsilon"
+        == "v_prediction"
     )
     schedule = NoiseSchedule(
         n_steps=cfg.model.diffusion_steps,
