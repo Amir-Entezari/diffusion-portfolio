@@ -634,7 +634,145 @@ def main() -> None:
                 f"corr={float(output.correlation_loss.detach()):.6f}"
             )
 
+    # ========================================================
+    # Phase B2 — fresh-noise denoising skill by timestep.
+    #
+    # This diagnoses the high-noise end of the diffusion
+    # process separately. A zero predictor has MSE ~= 1.
+    # ========================================================
 
+    print()
+    print(
+        "=" * 72
+    )
+    print(
+        "PHASE B2 — FRESH-NOISE SKILL BY TIMESTEP"
+    )
+    print(
+        "=" * 72
+    )
+
+    probe_steps = (
+        0,
+        249,
+        499,
+        749,
+        999,
+    )
+
+    n_probe_draws = 8
+
+    fresh_generator = torch.Generator(
+        device="cpu"
+    )
+
+    fresh_generator.manual_seed(
+        20260929
+    )
+
+    model.eval()
+
+    for timestep in probe_steps:
+        model_squared_error = 0.0
+        zero_squared_error = 0.0
+
+        with torch.no_grad():
+            for _ in range(
+                n_probe_draws
+            ):
+                fresh_noise = torch.randn(
+                    target.shape,
+                    generator=fresh_generator,
+                    dtype=target.dtype,
+                    device="cpu",
+                ).to(
+                    device
+                )
+
+                schedule_timesteps = torch.full(
+                    (
+                        target.shape[0],
+                    ),
+                    timestep,
+                    device=device,
+                    dtype=torch.long,
+                )
+
+                noisy_target = (
+                    model.noise_schedule.q_sample(
+                        target,
+                        schedule_timesteps,
+                        fresh_noise,
+                    )
+                )
+
+                denoiser_output = (
+                    model.denoiser(
+                        noisy_target,
+                        schedule_timesteps + 1,
+                        return_history,
+                        asset_covariates,
+                        systematic_covariates,
+                    )
+                )
+
+                model_squared_error += float(
+                    (
+                        denoiser_output.noise
+                        - fresh_noise
+                    )
+                    .square()
+                    .mean()
+                    .cpu()
+                )
+
+                # epsilon_hat = 0 baseline.
+                zero_squared_error += float(
+                    fresh_noise
+                    .square()
+                    .mean()
+                    .cpu()
+                )
+
+        model_mse = (
+            model_squared_error
+            / n_probe_draws
+        )
+
+        zero_mse = (
+            zero_squared_error
+            / n_probe_draws
+        )
+
+        skill = (
+            1.0
+            - model_mse
+            / zero_mse
+        )
+
+        alpha_bar = float(
+            model.noise_schedule
+            .alphas_cumprod[
+                timestep
+            ]
+            .detach()
+            .cpu()
+        )
+
+        amplification = (
+            1.0
+            / np.sqrt(
+                alpha_bar
+            )
+        )
+
+        print(
+            f"t={timestep:03d} | "
+            f"model MSE={model_mse:.6f} | "
+            f"zero MSE={zero_mse:.6f} | "
+            f"skill={100.0 * skill:+7.2f}% | "
+            f"1/sqrt(a_bar)={amplification:8.2f}"
+        )
 
     # ========================================================
     # Phase C — actual 50-step DDIM path.
