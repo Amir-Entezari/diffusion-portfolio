@@ -29,6 +29,11 @@ from diffusion_portfolio.models.diffolio.correlation_loss import (
     extract_asset_attention,
 )
 
+from diffusion_portfolio.models.diffolio.objective import (
+    DiffolioObjective,
+    DiffolioTrainingOutput,
+)
+
 __all__ = [
     "AttentionBlockOutput",
     "CrossAttentionBlock",
@@ -46,4 +51,6 @@ __all__ = [
     "correlation_guided_loss",
     "diffolio_correlation_regularizer",
     "extract_asset_attention",
+    "DiffolioObjective",
+    "DiffolioTrainingOutput",
 ]
