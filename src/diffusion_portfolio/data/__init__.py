@@ -56,6 +56,10 @@ from diffusion_portfolio.data.windows import (
     make_windows,
 )
 
+from diffusion_portfolio.data.covariate_normalization import (
+    CovariateStandardizer,
+)
+
 from diffusion_portfolio.data.splits import (
     WindowSplits,
     split_windows_by_date,
@@ -111,4 +115,5 @@ __all__ = [
     "SystematicCovariateTable",
     "align_systematic_covariates_to_dates",
     "build_monthly_systematic_covariates",
+    "CovariateStandardizer",
 ]
