@@ -16,6 +16,13 @@ from diffusion_portfolio.models.diffolio.denoiser import (
     DiffolioDenoiserOutput,
 )
 
+from diffusion_portfolio.models.diffolio.correlation_target import (
+    ShrinkageCorrelationTarget,
+    compute_training_covariance,
+    covariance_to_correlation,
+    estimate_shrinkage_correlation,
+)
+
 __all__ = [
     "AttentionBlockOutput",
     "CrossAttentionBlock",
@@ -26,4 +33,8 @@ __all__ = [
     "SinusoidalDiffusionEmbedding",
     "DiffolioDenoiser",
     "DiffolioDenoiserOutput",
+    "ShrinkageCorrelationTarget",
+    "compute_training_covariance",
+    "covariance_to_correlation",
+    "estimate_shrinkage_correlation",
 ]
