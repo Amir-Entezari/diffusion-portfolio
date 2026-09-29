@@ -15,12 +15,17 @@ from diffusion_portfolio.data.ken_french import (
 
 from diffusion_portfolio.data.fama_french import (
     DEFAULT_FF3_DAILY_CACHE,
+    FACTOR_COLUMNS,
     FF3_DAILY_URL,
+    FactorTable,
     RiskFreeSeries,
     download_ff3_daily,
+    load_daily_factors,
     load_daily_risk_free,
     parse_ff3_daily_text,
+    parse_ff3_factor_text,
     read_ff3_daily_zip,
+    read_ff3_factor_zip,
 )
 
 from diffusion_portfolio.data.dataset import (
@@ -31,6 +36,8 @@ from diffusion_portfolio.data.dataset import (
     collate_return_batch,
     make_dataloaders,
 )
+
+
 
 from diffusion_portfolio.data.normalization import (
     TrainStandardizer,

@@ -66,6 +66,276 @@ class RiskFreeSeries:
             )
 
 
+@dataclass(frozen=True)
+class FactorTable:
+    """Chronological daily Fama-French factor returns.
+
+    All values are decimal returns.
+
+    Columns:
+        Mkt-RF
+        SMB
+        HML
+        RF
+    """
+
+    dates: pd.DatetimeIndex
+    returns: np.ndarray
+    columns: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if self.returns.ndim != 2:
+            raise ValueError(
+                "factor returns must have shape [time, factors]"
+            )
+
+        if len(self.dates) != self.returns.shape[0]:
+            raise ValueError(
+                "dates and factor returns must have the same length"
+            )
+
+        if len(self.columns) != self.returns.shape[1]:
+            raise ValueError(
+                "column count does not match factor dimension"
+            )
+
+        if not self.dates.is_monotonic_increasing:
+            raise ValueError(
+                "factor dates must be chronological"
+            )
+
+        if self.dates.has_duplicates:
+            raise ValueError(
+                "factor dates must not contain duplicates"
+            )
+
+        if not np.isfinite(
+            self.returns
+        ).all():
+            raise ValueError(
+                "factor returns contain NaN or infinite values"
+            )
+
+FACTOR_COLUMNS = (
+    "Mkt-RF",
+    "SMB",
+    "HML",
+    "RF",
+)
+
+
+def parse_ff3_factor_text(
+    text: str,
+) -> FactorTable:
+    """Parse daily Mkt-RF, SMB, HML, and RF factors."""
+
+    lines = text.splitlines()
+
+    header_idx = _find_factor_header(
+        lines
+    )
+
+    dates: list[pd.Timestamp] = []
+    values: list[list[float]] = []
+
+    data_started = False
+
+    for line in lines[
+        header_idx + 1 :
+    ]:
+        if not line.strip():
+            if data_started:
+                break
+            continue
+
+        cells = [
+            cell.strip()
+            for cell in line.split(",")
+        ]
+
+        if not cells:
+            continue
+
+        date_text = cells[0]
+
+        if not (
+            len(date_text) == 8
+            and date_text.isdigit()
+        ):
+            if data_started:
+                break
+            continue
+
+        if len(cells) < 5:
+            raise ValueError(
+                "Malformed Fama/French factor row "
+                f"for date {date_text}"
+            )
+
+        try:
+            date = pd.to_datetime(
+                date_text,
+                format="%Y%m%d",
+            )
+
+            row_percent = [
+                float(cells[index])
+                for index in range(
+                    1,
+                    5,
+                )
+            ]
+
+        except (
+            ValueError,
+            TypeError,
+        ) as exc:
+            raise ValueError(
+                "Could not parse Fama/French factor "
+                f"row for {date_text}"
+            ) from exc
+
+        if any(
+            value <= -99.0
+            for value
+            in row_percent
+        ):
+            raise ValueError(
+                "Fama/French missing-value sentinel "
+                f"detected on {date_text}"
+            )
+
+        dates.append(
+            date
+        )
+
+        values.append(
+            [
+                value / 100.0
+                for value
+                in row_percent
+            ]
+        )
+
+        data_started = True
+
+    if not values:
+        raise ValueError(
+            "No daily Fama/French factor observations found"
+        )
+
+    return FactorTable(
+        dates=pd.DatetimeIndex(
+            dates
+        ),
+        returns=np.asarray(
+            values,
+            dtype=np.float32,
+        ),
+        columns=FACTOR_COLUMNS,
+    )
+    
+
+def read_ff3_factor_zip(
+    path: str | Path,
+) -> FactorTable:
+    """Read all daily FF3 factors from the official archive."""
+
+    path = Path(
+        path
+    )
+
+    if not path.exists():
+        raise FileNotFoundError(
+            path
+        )
+
+    if not zipfile.is_zipfile(
+        path
+    ):
+        raise ValueError(
+            f"Not a valid ZIP archive: {path}"
+        )
+
+    with zipfile.ZipFile(
+        path
+    ) as archive:
+        csv_files = [
+            name
+            for name
+            in archive.namelist()
+            if name.lower().endswith(
+                ".csv"
+            )
+        ]
+
+        if len(csv_files) != 1:
+            raise ValueError(
+                "Expected exactly one CSV inside "
+                f"factor archive, found {csv_files}"
+            )
+
+        raw = archive.read(
+            csv_files[0]
+        )
+
+    return parse_ff3_factor_text(
+        raw.decode(
+            "latin-1"
+        )
+    )
+    
+    
+def load_daily_factors(
+    path: str | Path = DEFAULT_FF3_DAILY_CACHE,
+    *,
+    download_if_missing: bool = True,
+) -> FactorTable:
+    """Load daily Mkt-RF, SMB, HML and RF."""
+
+    path = Path(
+        path
+    )
+
+    if not path.exists():
+        if not download_if_missing:
+            raise FileNotFoundError(
+                path
+            )
+
+        download_ff3_daily(
+            path
+        )
+
+    return read_ff3_factor_zip(
+        path
+    )
+    
+    
+def load_daily_risk_free(
+    path: str | Path = DEFAULT_FF3_DAILY_CACHE,
+    *,
+    download_if_missing: bool = True,
+) -> RiskFreeSeries:
+    """Load the official daily Fama/French risk-free rate."""
+
+    factors = load_daily_factors(
+        path,
+        download_if_missing=download_if_missing,
+    )
+
+    rf_index = factors.columns.index(
+        "RF"
+    )
+
+    return RiskFreeSeries(
+        dates=factors.dates.copy(),
+        returns=factors.returns[
+            :,
+            rf_index,
+        ].copy(),
+    )
+
 def download_ff3_daily(
     destination: str | Path = DEFAULT_FF3_DAILY_CACHE,
     *,
