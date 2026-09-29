@@ -34,6 +34,11 @@ from diffusion_portfolio.models.diffolio.objective import (
     DiffolioTrainingOutput,
 )
 
+from diffusion_portfolio.models.diffolio.ddim import (
+    make_ddim_timesteps,
+    sample_diffolio_ddim,
+)
+
 __all__ = [
     "AttentionBlockOutput",
     "CrossAttentionBlock",
@@ -53,4 +58,6 @@ __all__ = [
     "extract_asset_attention",
     "DiffolioObjective",
     "DiffolioTrainingOutput",
+    "make_ddim_timesteps",
+    "sample_diffolio_ddim",
 ]
