@@ -7,7 +7,9 @@ from diffusion_portfolio.models.diffusion import (
 )
 
 
-def make_model():
+def make_model(
+    prediction_type="v_prediction",
+    ):
     return ConditionalDiffusionModel(
         lookback=60,
         n_assets=12,
@@ -15,6 +17,7 @@ def make_model():
         history_hidden_dim=32,
         diffusion_steps=20,
         schedule_type="cosine",
+        prediction_type=prediction_type,
         channels=[
             16,
             32,
@@ -78,12 +81,12 @@ def test_training_loss_is_scalar_and_finite():
         output.loss
     )
 
-    assert output.predicted_noise.shape == (
+    assert output.prediction.shape == (
         8,
         12,
     )
 
-    assert output.target_noise.shape == (
+    assert output.training_target.shape == (
         8,
         12,
     )
@@ -142,8 +145,8 @@ def test_fixed_noise_and_timesteps_are_deterministic():
     )
 
     torch.testing.assert_close(
-        output_a.predicted_noise,
-        output_b.predicted_noise,
+        output_a.prediction,
+        output_b.prediction,
     )
 
     torch.testing.assert_close(
@@ -472,3 +475,137 @@ def test_sampler_depends_on_history_condition():
         samples_a,
         samples_b,
     )
+    
+    
+def test_v_prediction_training_target_matches_definition():
+    model = make_model(
+        prediction_type="v_prediction"
+    )
+
+    history = torch.randn(
+        4,
+        60,
+        12,
+    )
+
+    target = torch.randn(
+        4,
+        12,
+    )
+
+    noise = torch.randn(
+        4,
+        12,
+    )
+
+    timesteps = torch.tensor(
+        [
+            0,
+            5,
+            10,
+            19,
+        ]
+    )
+
+    output = model.training_loss(
+        history,
+        target,
+        noise=noise,
+        timesteps=timesteps,
+    )
+
+    coefficients = (
+        model.noise_schedule
+        .get_coefficients(
+            timesteps
+        )
+    )
+
+    sqrt_alpha_bar = (
+        coefficients[
+            "sqrt_alpha_cumprod"
+        ].unsqueeze(-1)
+    )
+
+    sqrt_one_minus = (
+        coefficients[
+            "sqrt_one_minus_alpha_cumprod"
+        ].unsqueeze(-1)
+    )
+
+    expected = (
+        sqrt_alpha_bar
+        * noise
+        - sqrt_one_minus
+        * target
+    )
+
+    torch.testing.assert_close(
+        output.training_target,
+        expected,
+    )
+
+
+def test_epsilon_prediction_remains_supported():
+    model = make_model(
+        prediction_type="epsilon"
+    )
+
+    history = torch.randn(
+        4,
+        60,
+        12,
+    )
+
+    target = torch.randn(
+        4,
+        12,
+    )
+
+    noise = torch.randn(
+        4,
+        12,
+    )
+
+    timesteps = torch.tensor(
+        [
+            1,
+            2,
+            3,
+            4,
+        ]
+    )
+
+    output = model.training_loss(
+        history,
+        target,
+        noise=noise,
+        timesteps=timesteps,
+    )
+
+    torch.testing.assert_close(
+        output.training_target,
+        noise,
+    )
+
+
+def test_invalid_prediction_type_is_rejected():
+    with pytest.raises(
+        ValueError,
+        match="prediction_type",
+    ):
+        ConditionalDiffusionModel(
+            lookback=60,
+            n_assets=12,
+            condition_dim=16,
+            history_hidden_dim=32,
+            diffusion_steps=20,
+            schedule_type="cosine",
+            prediction_type="magic",
+            channels=[
+                16,
+                32,
+            ],
+            time_embed_dim=16,
+            n_res_blocks=1,
+        )

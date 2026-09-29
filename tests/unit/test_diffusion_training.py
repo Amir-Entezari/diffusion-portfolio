@@ -27,6 +27,7 @@ def make_model():
             16,
         ],
         time_embed_dim=8,
+        prediction_type="v_prediction",
         n_res_blocks=1,
     )
 

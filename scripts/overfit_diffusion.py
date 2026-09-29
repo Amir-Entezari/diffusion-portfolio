@@ -187,6 +187,9 @@ def main() -> None:
         channels=list(
             cfg.model.channels
         ),
+        prediction_type=(
+            cfg.model.prediction_type
+        ),
         time_embed_dim=(
             cfg.model.time_embed_dim
         ),

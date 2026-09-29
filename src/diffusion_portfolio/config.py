@@ -35,7 +35,7 @@ class ModelConfig:
 
     diffusion_steps: int = 100
     schedule: str = "cosine"
-    prediction_type: str = "epsilon"
+    prediction_type: str = "v_prediction"
 
     time_embed_dim: int = 128
     channels: tuple[int, ...] = (
@@ -153,10 +153,13 @@ def load_config(path: str | Path) -> MVPConfig:
             "n_res_blocks must be positive"
         )
 
-    if cfg.model.prediction_type != "epsilon":
+    if cfg.model.prediction_type not in {
+        "epsilon",
+        "v_prediction",
+    }:
         raise ValueError(
-            "Only epsilon prediction is supported "
-            "for the vanilla MVP"
+            "prediction_type must be one of: "
+            "'epsilon', 'v_prediction'"
         )
     if cfg.training.gradient_clip_norm <= 0:
         raise ValueError(

@@ -26,7 +26,7 @@ def test_config_values_reach_instantiated_components(tmp_path: Path):
             "history_hidden_dim": 48,
             "time_embed_dim": 20,
             "n_res_blocks": 2,
-            "prediction_type": "epsilon",
+            "prediction_type": "v_prediction",
         },
         "training": {
             "gradient_clip_norm": 0.75,

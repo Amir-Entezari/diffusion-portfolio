@@ -23,7 +23,7 @@ model:
 
   diffusion_steps: 100
   schedule: cosine
-  prediction_type: epsilon
+  prediction_type: v_prediction
 
   time_embed_dim: 128
   channels: [32, 64, 128]

@@ -22,11 +22,11 @@ from diffusion_portfolio.models.diffusion.score_network import (
 
 @dataclass(frozen=True)
 class DiffusionTrainingOutput:
-    """Intermediate values from one DDPM training step."""
+    """Intermediate values from one diffusion training step."""
 
     loss: Tensor
-    predicted_noise: Tensor
-    target_noise: Tensor
+    prediction: Tensor
+    training_target: Tensor
     noisy_target: Tensor
     timesteps: Tensor
 
@@ -60,6 +60,7 @@ class ConditionalDiffusionModel(nn.Module):
         diffusion_steps: int,
         schedule_type: str,
         channels: list[int],
+        prediction_type: str,
         time_embed_dim: int,
         n_res_blocks: int,
     ) -> None:
@@ -69,7 +70,17 @@ class ConditionalDiffusionModel(nn.Module):
             raise ValueError(
                 "diffusion_steps must be > 1"
             )
-
+        if prediction_type not in {
+            "epsilon",
+            "v_prediction",
+        }:
+            raise ValueError(
+                "prediction_type must be "
+                "'epsilon' or 'v_prediction'"
+            )
+        self.prediction_type = (
+            prediction_type
+        )
         self.lookback = lookback
         self.n_assets = n_assets
         self.condition_dim = (
@@ -149,13 +160,13 @@ class ConditionalDiffusionModel(nn.Module):
 
         return target
 
-    def predict_noise(
+    def predict_model_output(
         self,
         noisy_target: Tensor,
         timesteps: Tensor,
         history: Tensor,
     ) -> Tensor:
-        """Predict epsilon from x_t, timestep, and historical context."""
+        """Predict the configured diffusion parameterization."""
 
         if noisy_target.ndim != 2:
             raise ValueError(
@@ -192,6 +203,131 @@ class ConditionalDiffusionModel(nn.Module):
             noisy_target,
             timesteps,
             condition,
+        )
+        
+    def _diffusion_coefficients(
+        self,
+        timesteps: Tensor,
+        reference: Tensor,
+    ) -> tuple[Tensor, Tensor]:
+        """Return broadcastable sqrt(alpha_bar) coefficients."""
+
+        coefficients = (
+            self.noise_schedule
+            .get_coefficients(
+                timesteps
+            )
+        )
+
+        shape = (
+            reference.shape[0],
+            *(
+                [1]
+                * (
+                    reference.ndim
+                    - 1
+                )
+            ),
+        )
+
+        sqrt_alpha_bar = (
+            coefficients[
+                "sqrt_alpha_cumprod"
+            ]
+            .to(
+                device=reference.device,
+                dtype=reference.dtype,
+            )
+            .reshape(shape)
+        )
+
+        sqrt_one_minus = (
+            coefficients[
+                "sqrt_one_minus_alpha_cumprod"
+            ]
+            .to(
+                device=reference.device,
+                dtype=reference.dtype,
+            )
+            .reshape(shape)
+        )
+
+        return (
+            sqrt_alpha_bar,
+            sqrt_one_minus,
+        )
+
+
+    def _make_training_target(
+        self,
+        x_0: Tensor,
+        noise: Tensor,
+        timesteps: Tensor,
+    ) -> Tensor:
+        """Construct epsilon or v training target."""
+
+        if self.prediction_type == "epsilon":
+            return noise
+
+        (
+            sqrt_alpha_bar,
+            sqrt_one_minus,
+        ) = self._diffusion_coefficients(
+            timesteps,
+            x_0,
+        )
+
+        # v = sqrt(alpha_bar) * epsilon
+        #     - sqrt(1-alpha_bar) * x_0
+        return (
+            sqrt_alpha_bar
+            * noise
+            - sqrt_one_minus
+            * x_0
+        )
+
+
+    def _prediction_to_x0(
+        self,
+        x_t: Tensor,
+        timesteps: Tensor,
+        prediction: Tensor,
+    ) -> Tensor:
+        """Convert model output to a prediction of clean x_0."""
+
+        (
+            sqrt_alpha_bar,
+            sqrt_one_minus,
+        ) = self._diffusion_coefficients(
+            timesteps,
+            x_t,
+        )
+
+        if self.prediction_type == "epsilon":
+            denominator = (
+                sqrt_alpha_bar.clamp_min(
+                    torch.finfo(
+                        x_t.dtype
+                    ).eps
+                )
+            )
+
+            return (
+                x_t
+                - sqrt_one_minus
+                * prediction
+            ) / denominator
+
+        # v-prediction:
+        #
+        # x_0 =
+        # sqrt(alpha_bar) * x_t
+        # - sqrt(1-alpha_bar) * v
+        return (
+            sqrt_alpha_bar
+            * x_t
+            - sqrt_one_minus
+            * prediction
         )
     def reverse_step(
         self,
@@ -327,30 +463,62 @@ class ConditionalDiffusionModel(nn.Module):
                 - 1
             ]
 
-        predicted_noise = (
-            self.score_network(
-                x_t,
-                timesteps,
-                condition,
-            )
-        )
-
-        mean = (
-            1.0
-            / torch.sqrt(
-                alpha_t
-            )
-        ).unsqueeze(-1) * (
-            x_t
-            - (
-                beta_t
-                / torch.sqrt(
-                    1.0
-                    - alpha_bar_t
+            prediction = (
+                self.score_network(
+                    x_t,
+                    timesteps,
+                    condition,
                 )
-            ).unsqueeze(-1)
-            * predicted_noise
-        )
+            )
+
+            predicted_x0 = (
+                self._prediction_to_x0(
+                    x_t,
+                    timesteps,
+                    prediction,
+                )
+            )
+
+            # q(x_{t-1} | x_t, x_0) posterior mean:
+            #
+            # coef1 * x_0 + coef2 * x_t
+            #
+            # This form is particularly useful for v-prediction because
+            # predicted_x0 remains well-conditioned at very low SNR.
+            denominator = (
+                1.0
+                - alpha_bar_t
+            )
+
+            posterior_mean_coef_x0 = (
+                beta_t
+                * torch.sqrt(
+                    alpha_bar_prev
+                )
+                / denominator
+            )
+
+            posterior_mean_coef_xt = (
+                torch.sqrt(
+                    alpha_t
+                )
+                * (
+                    1.0
+                    - alpha_bar_prev
+                )
+                / denominator
+            )
+
+            mean = (
+                posterior_mean_coef_x0.unsqueeze(
+                    -1
+                )
+                * predicted_x0
+                + posterior_mean_coef_xt.unsqueeze(
+                    -1
+                )
+                * x_t
+            )
 
         posterior_variance = (
             beta_t
@@ -629,25 +797,33 @@ class ConditionalDiffusionModel(nn.Module):
             noise,
         )
 
-        predicted_noise = (
-            self.predict_noise(
+        prediction = (
+            self.predict_model_output(
                 x_t,
                 timesteps,
                 history,
             )
         )
 
+        training_target = (
+            self._make_training_target(
+                x_0,
+                noise,
+                timesteps,
+            )
+        )
+
         loss = F.mse_loss(
-            predicted_noise,
-            noise,
+            prediction,
+            training_target,
         )
 
         return DiffusionTrainingOutput(
             loss=loss,
-            predicted_noise=(
-                predicted_noise
+            prediction=prediction,
+            training_target=(
+                training_target
             ),
-            target_noise=noise,
             noisy_target=x_t,
             timesteps=timesteps,
         )
