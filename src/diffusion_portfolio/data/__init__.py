@@ -37,7 +37,11 @@ from diffusion_portfolio.data.dataset import (
     make_dataloaders,
 )
 
-
+from diffusion_portfolio.data.asset_characteristics import (
+    CHARACTERISTIC_COLUMNS,
+    AssetCharacteristicTable,
+    build_asset_characteristics,
+)
 
 from diffusion_portfolio.data.normalization import (
     TrainStandardizer,
@@ -95,4 +99,7 @@ __all__ = [
     "load_daily_factors",
     "parse_ff3_factor_text",
     "read_ff3_factor_zip",
+    "CHARACTERISTIC_COLUMNS",
+    "AssetCharacteristicTable",
+    "build_asset_characteristics",
 ]
