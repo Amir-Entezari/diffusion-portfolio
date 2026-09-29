@@ -79,6 +79,14 @@ from diffusion_portfolio.data.systematic_covariates import (
     build_monthly_systematic_covariates,
 )
 
+from diffusion_portfolio.data.diffolio_torch_dataset import (
+    DiffolioDataset,
+    DiffolioDatasetSplits,
+    DiffolioLoaderSplits,
+    collate_diffolio_batch,
+    make_diffolio_datasets,
+    make_diffolio_dataloaders,
+)
 __all__ = [
     "DEFAULT_KF12_CACHE",
     "INDUSTRY_COLUMNS",
@@ -127,4 +135,10 @@ __all__ = [
     "DiffolioWindowSplits",
     "make_diffolio_windows",
     "split_diffolio_windows_by_date",
+    "DiffolioDataset",
+    "DiffolioDatasetSplits",
+    "DiffolioLoaderSplits",
+    "collate_diffolio_batch",
+    "make_diffolio_datasets",
+    "make_diffolio_dataloaders",
 ]
