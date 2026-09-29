@@ -15,6 +15,7 @@ dependencies = [
   "pyyaml>=6.0",
   "tqdm>=4.65",
   "matplotlib>=3.7",
+  "openpyxl>=3.1",
 ]
 
 [project.optional-dependencies]
