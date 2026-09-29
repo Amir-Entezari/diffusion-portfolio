@@ -61,7 +61,12 @@ from diffusion_portfolio.data.splits import (
     split_windows_by_date,
     split_windows_chronologically,
 )
-
+from diffusion_portfolio.data.systematic_covariates import (
+    SYSTEMATIC_COLUMNS,
+    SystematicCovariateTable,
+    align_systematic_covariates_to_dates,
+    build_monthly_systematic_covariates,
+)
 
 __all__ = [
     "DEFAULT_KF12_CACHE",
@@ -102,4 +107,8 @@ __all__ = [
     "CHARACTERISTIC_COLUMNS",
     "AssetCharacteristicTable",
     "build_asset_characteristics",
+    "SYSTEMATIC_COLUMNS",
+    "SystematicCovariateTable",
+    "align_systematic_covariates_to_dates",
+    "build_monthly_systematic_covariates",
 ]
