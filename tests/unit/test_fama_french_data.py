@@ -2,7 +2,9 @@ import numpy as np
 import pytest
 
 from diffusion_portfolio.data import (
+    FACTOR_COLUMNS,
     parse_ff3_daily_text,
+    parse_ff3_factor_text,
 )
 
 
@@ -64,3 +66,55 @@ def test_rf_series_contains_finite_values():
     assert np.isfinite(
         rf.returns
     ).all()
+    
+    
+def test_factor_parser_reads_all_four_factors():
+    factors = parse_ff3_factor_text(
+        fake_factor_text()
+    )
+
+    assert factors.returns.shape == (
+        2,
+        4,
+    )
+
+    assert factors.columns == (
+        FACTOR_COLUMNS
+    )
+
+    np.testing.assert_allclose(
+        factors.returns[0],
+        np.array(
+            [
+                0.0086,
+                -0.0097,
+                -0.0022,
+                0.00006,
+            ],
+            dtype=np.float32,
+        ),
+        rtol=1e-6,
+        atol=1e-8,
+    )
+
+
+def test_factor_rf_matches_legacy_rf_parser():
+    factors = parse_ff3_factor_text(
+        fake_factor_text()
+    )
+
+    rf = parse_ff3_daily_text(
+        fake_factor_text()
+    )
+
+    rf_index = factors.columns.index(
+        "RF"
+    )
+
+    np.testing.assert_allclose(
+        factors.returns[
+            :,
+            rf_index,
+        ],
+        rf.returns,
+    )

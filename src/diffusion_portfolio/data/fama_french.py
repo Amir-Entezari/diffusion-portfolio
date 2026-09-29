@@ -311,30 +311,6 @@ def load_daily_factors(
         path
     )
     
-    
-def load_daily_risk_free(
-    path: str | Path = DEFAULT_FF3_DAILY_CACHE,
-    *,
-    download_if_missing: bool = True,
-) -> RiskFreeSeries:
-    """Load the official daily Fama/French risk-free rate."""
-
-    factors = load_daily_factors(
-        path,
-        download_if_missing=download_if_missing,
-    )
-
-    rf_index = factors.columns.index(
-        "RF"
-    )
-
-    return RiskFreeSeries(
-        dates=factors.dates.copy(),
-        returns=factors.returns[
-            :,
-            rf_index,
-        ].copy(),
-    )
 
 def download_ff3_daily(
     destination: str | Path = DEFAULT_FF3_DAILY_CACHE,
@@ -541,12 +517,19 @@ def load_daily_risk_free(
 ) -> RiskFreeSeries:
     """Load the official daily Fama/French risk-free rate."""
 
-    path = Path(path)
+    factors = load_daily_factors(
+        path,
+        download_if_missing=download_if_missing,
+    )
 
-    if not path.exists():
-        if not download_if_missing:
-            raise FileNotFoundError(path)
+    rf_index = factors.columns.index(
+        "RF"
+    )
 
-        download_ff3_daily(path)
-
-    return read_ff3_daily_zip(path)
+    return RiskFreeSeries(
+        dates=factors.dates.copy(),
+        returns=factors.returns[
+            :,
+            rf_index,
+        ].copy(),
+    )

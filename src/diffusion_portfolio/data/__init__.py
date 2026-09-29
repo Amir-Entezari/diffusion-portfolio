@@ -90,4 +90,9 @@ __all__ = [
     "build_window_datasets",
     "collate_return_batch",
     "make_dataloaders",
+    "FACTOR_COLUMNS",
+    "FactorTable",
+    "load_daily_factors",
+    "parse_ff3_factor_text",
+    "read_ff3_factor_zip",
 ]
