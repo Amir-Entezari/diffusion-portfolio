@@ -104,67 +104,134 @@ def build_monthly_systematic_covariates(
 ) -> SystematicCovariateTable:
     """Construct the eight Diffolio systematic covariates.
 
-    Expected raw columns follow the Goyal-Welch predictor
-    dataset:
+    Supports both:
 
-        yyyymm
-        Index
-        D12
-        E12
-        b/m
-        tbl
-        AAA
-        BAA
-        lty
-        ntis
-        svar
+    1. Current Goyal workbook schema, which already contains:
+           d/p, e/p, tms, dfy
 
-    Derived variables:
-
-        dp  = log(D12) - log(Index)
-        ep  = log(E12) - log(Index)
-        tms = lty - tbl
-        dfy = BAA - AAA
-
-    The other four variables are taken directly from
-    the source data:
-
-        tbl, b/m, ntis, svar
+    2. Older/raw schema, where those predictors must be
+       constructed from:
+           Index/price, D12/d12, E12/e12,
+           lty, tbl, BAA, AAA
     """
 
-    required = (
+    # ---------------------------------------------------------
+    # Variables required regardless of source-file version.
+    # ---------------------------------------------------------
+    base_required = (
         "yyyymm",
-        "Index",
-        "D12",
-        "E12",
         "b/m",
         "tbl",
-        "AAA",
-        "BAA",
-        "lty",
         "ntis",
         "svar",
     )
 
-    missing = [
+    missing_base = [
         column
-        for column in required
+        for column in base_required
         if column not in raw.columns
     ]
 
-    if missing:
+    if missing_base:
         raise ValueError(
             "Missing required Goyal columns: "
-            f"{missing}"
+            f"{missing_base}"
         )
 
-    frame = raw.loc[
-        :,
-        required,
-    ].copy()
+    # ---------------------------------------------------------
+    # Current official workbook already provides the four
+    # derived predictors directly.
+    # ---------------------------------------------------------
+    derived_columns = (
+        "d/p",
+        "e/p",
+        "tms",
+        "dfy",
+    )
+
+    has_direct_predictors = all(
+        column in raw.columns
+        for column in derived_columns
+    )
+
+    if has_direct_predictors:
+        required = (
+            *base_required,
+            *derived_columns,
+        )
+
+        frame = raw.loc[
+            :,
+            required,
+        ].copy()
+
+    else:
+        # -----------------------------------------------------
+        # Backward compatibility with older Goyal files.
+        # -----------------------------------------------------
+        if "Index" in raw.columns:
+            price_column = "Index"
+        elif "price" in raw.columns:
+            price_column = "price"
+        else:
+            raise ValueError(
+                "Goyal data must contain either "
+                "'Index' or 'price'"
+            )
+
+        if "D12" in raw.columns:
+            dividend_column = "D12"
+        elif "d12" in raw.columns:
+            dividend_column = "d12"
+        else:
+            raise ValueError(
+                "Goyal data must contain either "
+                "'D12' or 'd12'"
+            )
+
+        if "E12" in raw.columns:
+            earnings_column = "E12"
+        elif "e12" in raw.columns:
+            earnings_column = "e12"
+        else:
+            raise ValueError(
+                "Goyal data must contain either "
+                "'E12' or 'e12'"
+            )
+
+        extra_required = (
+            price_column,
+            dividend_column,
+            earnings_column,
+            "AAA",
+            "BAA",
+            "lty",
+        )
+
+        missing_extra = [
+            column
+            for column in extra_required
+            if column not in raw.columns
+        ]
+
+        if missing_extra:
+            raise ValueError(
+                "Missing required Goyal columns: "
+                f"{missing_extra}"
+            )
+
+        required = (
+            *base_required,
+            *extra_required,
+        )
+
+        frame = raw.loc[
+            :,
+            required,
+        ].copy()
 
     # ---------------------------------------------------------
-    # Parse dates.
+    # Parse monthly dates.
     # ---------------------------------------------------------
     yyyymm = _to_numeric(
         frame["yyyymm"]
@@ -182,34 +249,27 @@ def build_monthly_systematic_covariates(
         errors="coerce",
     )
 
-    # Treat each observation as available at month-end.
+    # Treat observation m as available at month-end.
     dates = (
         dates
         + pd.offsets.MonthEnd(0)
     )
 
+    frame["date"] = dates
+
     # ---------------------------------------------------------
-    # Parse numeric columns.
+    # Parse every non-date source column numerically.
     # ---------------------------------------------------------
-    numeric_columns = (
-        "Index",
-        "D12",
-        "E12",
-        "b/m",
-        "tbl",
-        "AAA",
-        "BAA",
-        "lty",
-        "ntis",
-        "svar",
+    numeric_columns = tuple(
+        column
+        for column in required
+        if column != "yyyymm"
     )
 
     for column in numeric_columns:
         frame[column] = _to_numeric(
             frame[column]
         )
-
-    frame["date"] = dates
 
     complete = (
         frame["date"].notna()
@@ -227,10 +287,9 @@ def build_monthly_systematic_covariates(
             "No complete Goyal observations found"
         )
 
-    # Historical Goyal files contain early periods before all
-    # predictors become available. Ignore that initial warm-up,
-    # but once the complete sample begins, do not silently skip
-    # internal missing observations.
+    # Early historical rows can legitimately be incomplete.
+    # Once a fully usable sample starts, internal missing rows
+    # are treated as data problems rather than silently skipped.
     first_complete_position = int(
         np.flatnonzero(
             complete.to_numpy()
@@ -276,24 +335,7 @@ def build_monthly_systematic_covariates(
         )
 
     # ---------------------------------------------------------
-    # Validate variables entering logarithms.
-    # ---------------------------------------------------------
-    for column in (
-        "Index",
-        "D12",
-        "E12",
-    ):
-        if (
-            frame[column]
-            <= 0.0
-        ).any():
-            raise ValueError(
-                f"{column} must be positive "
-                "for log-ratio construction"
-            )
-
-    # ---------------------------------------------------------
-    # Welch-Goyal transformations used by Diffolio.
+    # Variables present directly in every supported schema.
     # ---------------------------------------------------------
     tbl = frame[
         "tbl"
@@ -301,66 +343,10 @@ def build_monthly_systematic_covariates(
         dtype=np.float64
     )
 
-    dp = (
-        np.log(
-            frame[
-                "D12"
-            ].to_numpy(
-                dtype=np.float64
-            )
-        )
-        - np.log(
-            frame[
-                "Index"
-            ].to_numpy(
-                dtype=np.float64
-            )
-        )
-    )
-
-    ep = (
-        np.log(
-            frame[
-                "E12"
-            ].to_numpy(
-                dtype=np.float64
-            )
-        )
-        - np.log(
-            frame[
-                "Index"
-            ].to_numpy(
-                dtype=np.float64
-            )
-        )
-    )
-
     bm = frame[
         "b/m"
     ].to_numpy(
         dtype=np.float64
-    )
-
-    tms = (
-        frame[
-            "lty"
-        ].to_numpy(
-            dtype=np.float64
-        )
-        - tbl
-    )
-
-    dfy = (
-        frame[
-            "BAA"
-        ].to_numpy(
-            dtype=np.float64
-        )
-        - frame[
-            "AAA"
-        ].to_numpy(
-            dtype=np.float64
-        )
     )
 
     ntis = frame[
@@ -374,6 +360,125 @@ def build_monthly_systematic_covariates(
     ].to_numpy(
         dtype=np.float64
     )
+
+    # ---------------------------------------------------------
+    # Prefer the predictors supplied directly by the current
+    # official Goyal workbook.
+    # ---------------------------------------------------------
+    if has_direct_predictors:
+        dp = frame[
+            "d/p"
+        ].to_numpy(
+            dtype=np.float64
+        )
+
+        ep = frame[
+            "e/p"
+        ].to_numpy(
+            dtype=np.float64
+        )
+
+        tms = frame[
+            "tms"
+        ].to_numpy(
+            dtype=np.float64
+        )
+
+        dfy = frame[
+            "dfy"
+        ].to_numpy(
+            dtype=np.float64
+        )
+
+    else:
+        # -----------------------------------------------------
+        # Legacy reconstruction.
+        #
+        # Standard Welch-Goyal definitions:
+        #
+        # d/p = log(D12) - log(Index)
+        # e/p = log(E12) - log(Index)
+        # tms = lty - tbl
+        # dfy = BAA - AAA
+        # -----------------------------------------------------
+        price = frame[
+            price_column
+        ].to_numpy(
+            dtype=np.float64
+        )
+
+        dividends = frame[
+            dividend_column
+        ].to_numpy(
+            dtype=np.float64
+        )
+
+        earnings = frame[
+            earnings_column
+        ].to_numpy(
+            dtype=np.float64
+        )
+
+        if np.any(
+            price <= 0.0
+        ):
+            raise ValueError(
+                "Price/index must be positive"
+            )
+
+        if np.any(
+            dividends <= 0.0
+        ):
+            raise ValueError(
+                "D12/d12 must be positive"
+            )
+
+        if np.any(
+            earnings <= 0.0
+        ):
+            raise ValueError(
+                "E12/e12 must be positive"
+            )
+
+        dp = (
+            np.log(
+                dividends
+            )
+            - np.log(
+                price
+            )
+        )
+
+        ep = (
+            np.log(
+                earnings
+            )
+            - np.log(
+                price
+            )
+        )
+
+        tms = (
+            frame[
+                "lty"
+            ].to_numpy(
+                dtype=np.float64
+            )
+            - tbl
+        )
+
+        dfy = (
+            frame[
+                "BAA"
+            ].to_numpy(
+                dtype=np.float64
+            )
+            - frame[
+                "AAA"
+            ].to_numpy(
+                dtype=np.float64
+            )
+        )
 
     values = np.column_stack(
         (
@@ -407,7 +512,6 @@ def build_monthly_systematic_covariates(
         ),
         columns=SYSTEMATIC_COLUMNS,
     )
-
 
 def align_systematic_covariates_to_dates(
     monthly: SystematicCovariateTable,

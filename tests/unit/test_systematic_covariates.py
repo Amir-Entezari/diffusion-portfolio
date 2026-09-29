@@ -320,3 +320,107 @@ def test_future_month_cannot_change_past_daily_values():
         rtol=0.0,
         atol=0.0,
     )
+    
+    
+    
+    
+def test_current_goyal_schema_is_supported():
+    raw = pd.DataFrame(
+        {
+            "yyyymm": [
+                200001,
+                200002,
+            ],
+            "price": [
+                100.0,
+                101.0,
+            ],
+            "d12": [
+                4.0,
+                4.1,
+            ],
+            "e12": [
+                5.0,
+                5.1,
+            ],
+            "b/m": [
+                0.30,
+                0.31,
+            ],
+            "tbl": [
+                0.05,
+                0.051,
+            ],
+            "d/p": [
+                -3.21,
+                -3.20,
+            ],
+            "e/p": [
+                -2.99,
+                -2.98,
+            ],
+            "tms": [
+                0.012,
+                0.013,
+            ],
+            "dfy": [
+                0.009,
+                0.010,
+            ],
+            "ntis": [
+                0.01,
+                0.02,
+            ],
+            "svar": [
+                0.002,
+                0.003,
+            ],
+        }
+    )
+
+    result = (
+        build_monthly_systematic_covariates(
+            raw
+        )
+    )
+
+    assert result.values.shape == (
+        2,
+        8,
+    )
+
+    row = result.values[
+        0
+    ]
+
+    assert row[
+        SYSTEMATIC_COLUMNS.index(
+            "dp"
+        )
+    ] == pytest.approx(
+        -3.21
+    )
+
+    assert row[
+        SYSTEMATIC_COLUMNS.index(
+            "ep"
+        )
+    ] == pytest.approx(
+        -2.99
+    )
+
+    assert row[
+        SYSTEMATIC_COLUMNS.index(
+            "tms"
+        )
+    ] == pytest.approx(
+        0.012
+    )
+
+    assert row[
+        SYSTEMATIC_COLUMNS.index(
+            "dfy"
+        )
+    ] == pytest.approx(
+        0.009
+    )
