@@ -384,3 +384,55 @@ def test_training_can_resume_from_checkpoint(
     assert saved[
         "step"
     ] == 4
+    
+
+def test_checkpoint_callback_receives_periodic_and_final_checkpoints(
+    tmp_path: Path,
+):
+    model = make_model()
+
+    loader = make_loader()
+
+    checkpoint = (
+        tmp_path
+        / "callback.pt"
+    )
+
+    calls = []
+
+    def callback(
+        step: int,
+        path: Path,
+    ):
+        calls.append(
+            (
+                step,
+                path.exists(),
+            )
+        )
+
+    fit_diffolio_steps(
+        model,
+        loader,
+        total_steps=4,
+        warmup_steps=1,
+        max_learning_rate=1e-3,
+        weight_decay=0.0,
+        device="cpu",
+        checkpoint_path=checkpoint,
+        checkpoint_every=2,
+        checkpoint_callback=callback,
+        record_every=1,
+        verbose=False,
+    )
+
+    assert calls == [
+        (
+            2,
+            True,
+        ),
+        (
+            4,
+            True,
+        ),
+    ]

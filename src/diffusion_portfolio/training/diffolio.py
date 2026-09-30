@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from pathlib import Path
+from collections.abc import Callable
 
 import torch
 from torch import nn
@@ -245,6 +246,10 @@ def fit_diffolio_steps(
     checkpoint_path: str | Path | None = None,
     checkpoint_every: int | None = None,
     resume_checkpoint: str | Path | None = None,
+    checkpoint_callback: Callable[
+        [int, Path],
+        None,
+    ] | None = None,
     record_every: int = 100,
     verbose: bool = True,
 ) -> DiffolioFitResult:
@@ -507,6 +512,14 @@ def fit_diffolio_steps(
                     f"{step}: {checkpoint_path}"
                 )
 
+            if checkpoint_callback is not None:
+                checkpoint_callback(
+                    step,
+                    Path(
+                        checkpoint_path
+                    ),
+                )
+
         should_record = (
             step == 1
             or step % record_every == 0
@@ -564,6 +577,13 @@ def fit_diffolio_steps(
             ),
             weight_decay=weight_decay,
         )
+        if checkpoint_callback is not None:
+            checkpoint_callback(
+                total_steps,
+                Path(
+                    checkpoint_path
+                ),
+            )
 
     return DiffolioFitResult(
         history=tuple(

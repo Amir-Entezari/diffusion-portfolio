@@ -26,6 +26,10 @@ import pandas as pd
 import torch
 import yaml
 
+import json
+import shutil
+import subprocess
+
 from diffusion_portfolio.data import (
     CovariateStandardizer,
     TrainStandardizer,
@@ -715,7 +719,7 @@ def save_run_metadata(
     checkpoint: Path,
     return_scaler: TrainStandardizer,
     covariate_scaler: CovariateStandardizer,
-) -> None:
+) -> tuple[Path, Path]:
     checkpoint.parent.mkdir(
         parents=True,
         exist_ok=True,
@@ -829,7 +833,249 @@ def save_run_metadata(
         "Preprocessing stats:",
         scaler_path,
     )
+    return (
+        config_path,
+        scaler_path,
+    )
 
+
+def make_kaggle_backup_callback(
+    *,
+    dataset_handle: str,
+    every_steps: int,
+    total_steps: int,
+    run_config_path: Path,
+    preprocessing_path: Path,
+):
+    """Create a callback that versions checkpoints on Kaggle.
+
+    The latest training checkpoint is uploaded as a new
+    Kaggle Dataset version every ``every_steps``.
+
+    Previous Dataset versions remain available even if the
+    current Kaggle notebook session disappears.
+    """
+
+    if every_steps <= 0:
+        raise ValueError(
+            "Kaggle backup interval must be positive"
+        )
+
+    # Import lazily so normal/local training does not require
+    # KaggleHub to be installed.
+    import kagglehub
+
+    def backup(
+        step: int,
+        checkpoint_path: Path,
+    ) -> None:
+        # Do nothing on ordinary 5k local checkpoints.
+        #
+        # Always backup final step as well.
+        if (
+            step % every_steps != 0
+            and step != total_steps
+        ):
+            return
+
+        if not checkpoint_path.exists():
+            raise FileNotFoundError(
+                "Checkpoint does not exist: "
+                f"{checkpoint_path}"
+            )
+
+        staging_dir = (
+            checkpoint_path.parent
+            / "_kaggle_backup"
+        )
+
+        if staging_dir.exists():
+            shutil.rmtree(
+                staging_dir
+            )
+
+        staging_dir.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        # ----------------------------------------------------
+        # Checkpoint
+        # ----------------------------------------------------
+
+        uploaded_checkpoint = (
+            staging_dir
+            / "diffolio_100k.pt"
+        )
+
+        shutil.copy2(
+            checkpoint_path,
+            uploaded_checkpoint,
+        )
+
+        # ----------------------------------------------------
+        # Exact effective config + preprocessing statistics.
+        # ----------------------------------------------------
+
+        shutil.copy2(
+            run_config_path,
+            staging_dir
+            / "diffolio_config.yaml",
+        )
+
+        shutil.copy2(
+            preprocessing_path,
+            staging_dir
+            / "diffolio_preprocessing.npz",
+        )
+
+        # ----------------------------------------------------
+        # Record exactly which repository revision produced
+        # this checkpoint.
+        # ----------------------------------------------------
+
+        git_result = subprocess.run(
+            [
+                "git",
+                "rev-parse",
+                "HEAD",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        git_commit = (
+            git_result.stdout.strip()
+            if git_result.returncode == 0
+            else "unknown"
+        )
+
+        manifest = {
+            "step": step,
+            "total_steps": total_steps,
+            "checkpoint_file": (
+                uploaded_checkpoint.name
+            ),
+            "git_commit": git_commit,
+            "dataset_handle": (
+                dataset_handle
+            ),
+        }
+
+        with (
+            staging_dir
+            / "manifest.json"
+        ).open(
+            "w",
+            encoding="utf-8",
+        ) as handle:
+            json.dump(
+                manifest,
+                handle,
+                indent=2,
+            )
+
+        print()
+        print(
+            "=" * 72
+        )
+
+        print(
+            "KAGGLE CHECKPOINT BACKUP"
+        )
+
+        print(
+            "=" * 72
+        )
+
+        print(
+            f"Step: {step:,}/"
+            f"{total_steps:,}"
+        )
+
+        print(
+            "Dataset:",
+            dataset_handle,
+        )
+
+        print(
+            "Git commit:",
+            git_commit,
+        )
+
+        # Upload can occasionally fail due to a transient
+        # network/API issue. Retry before aborting the run.
+        delays = (
+            15,
+            30,
+            60,
+        )
+
+        last_error = None
+
+        for attempt in range(
+            1,
+            4,
+        ):
+            try:
+                kagglehub.dataset_upload(
+                    dataset_handle,
+                    str(
+                        staging_dir
+                    ),
+                    version_notes=(
+                        "Diffolio training "
+                        f"checkpoint: step "
+                        f"{step:,}/"
+                        f"{total_steps:,}; "
+                        f"git={git_commit}"
+                    ),
+                )
+
+                print(
+                    "Kaggle backup complete."
+                )
+
+                print(
+                    "=" * 72
+                )
+
+                print()
+
+                return
+
+            except Exception as exc:
+                last_error = exc
+
+                if attempt == 3:
+                    break
+
+                delay = delays[
+                    attempt - 1
+                ]
+
+                print(
+                    "Backup upload failed "
+                    f"(attempt {attempt}/3): "
+                    f"{exc}"
+                )
+
+                print(
+                    f"Retrying in "
+                    f"{delay} seconds..."
+                )
+
+                time.sleep(
+                    delay
+                )
+
+        raise RuntimeError(
+            "Kaggle checkpoint backup failed "
+            "after 3 attempts"
+        ) from last_error
+
+    return backup
 
 def main() -> None:
     args = parse_args()
@@ -971,6 +1217,77 @@ def main() -> None:
         f"{n_trainable:,}",
     )
 
+    kaggle_backup_cfg = (
+        training_cfg.get(
+            "kaggle_backup",
+            {},
+        )
+    )
+
+    checkpoint_callback = None
+
+    configured_total_steps = int(
+        training_cfg[
+            "total_steps"
+        ]
+    )
+
+    is_full_run = (
+        total_steps
+        == configured_total_steps
+    )
+
+    if (
+        kaggle_backup_cfg.get(
+            "enabled",
+            False,
+        )
+        and is_full_run
+    ):
+        checkpoint_callback = (
+            make_kaggle_backup_callback(
+                dataset_handle=str(
+                    kaggle_backup_cfg[
+                        "dataset_handle"
+                    ]
+                ),
+                every_steps=int(
+                    kaggle_backup_cfg[
+                        "every_steps"
+                    ]
+                ),
+                total_steps=total_steps,
+                run_config_path=(
+                    run_config_path
+                ),
+                preprocessing_path=(
+                    preprocessing_path
+                ),
+            )
+        )
+
+        print(
+            "Kaggle backup:",
+            kaggle_backup_cfg[
+                "dataset_handle"
+            ],
+        )
+
+        print(
+            "Kaggle backup every:",
+            f"{int(kaggle_backup_cfg['every_steps']):,}",
+            "steps",
+        )
+
+    elif kaggle_backup_cfg.get(
+        "enabled",
+        False,
+    ):
+        print(
+            "Kaggle backup disabled for "
+            "this shortened smoke run."
+        )
+
     training_cfg = config[
         "training"
     ]
@@ -990,6 +1307,21 @@ def main() -> None:
         torch.cuda.reset_peak_memory_stats(
             device
         )
+
+    (
+        run_config_path,
+        preprocessing_path,
+    ) = save_run_metadata(
+        config=config,
+        total_steps=total_steps,
+        warmup_steps=warmup_steps,
+        record_every=record_every,
+        checkpoint=checkpoint,
+        return_scaler=return_scaler,
+        covariate_scaler=(
+            covariate_scaler
+        ),
+    )
 
     print()
     print(
@@ -1043,6 +1375,9 @@ def main() -> None:
         checkpoint_path=checkpoint,
         checkpoint_every=(
             checkpoint_every
+        ),
+        checkpoint_callback=(
+            checkpoint_callback
         ),
         resume_checkpoint=(
             args.resume

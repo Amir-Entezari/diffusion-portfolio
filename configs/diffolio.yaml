@@ -57,8 +57,15 @@ training:
   num_workers: 0
 
   checkpoint_path: "artifacts/diffolio/diffolio_100k.pt"
-  # Operational safeguard for long cloud runs.
+
+  # Local /kaggle/working checkpoint.
   checkpoint_every: 5000
+
+  # Durable cross-session backup.
+  kaggle_backup:
+    enabled: true
+    dataset_handle: "amirentezari/diffolio-checkpoints"
+    every_steps: 10000
 
 inference:
   sampler: ddim
