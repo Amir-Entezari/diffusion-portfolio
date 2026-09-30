@@ -1217,6 +1217,25 @@ def main() -> None:
         f"{n_trainable:,}",
     )
 
+    training_cfg = config[
+        "training"
+    ]
+
+    (
+        run_config_path,
+        preprocessing_path,
+    ) = save_run_metadata(
+        config=config,
+        total_steps=total_steps,
+        warmup_steps=warmup_steps,
+        record_every=record_every,
+        checkpoint=checkpoint,
+        return_scaler=return_scaler,
+        covariate_scaler=(
+            covariate_scaler
+        ),
+    )
+
     kaggle_backup_cfg = (
         training_cfg.get(
             "kaggle_backup",
@@ -1288,9 +1307,6 @@ def main() -> None:
             "this shortened smoke run."
         )
 
-    training_cfg = config[
-        "training"
-    ]
 
     gradient_clip = (
         training_cfg.get(
@@ -1308,20 +1324,6 @@ def main() -> None:
             device
         )
 
-    (
-        run_config_path,
-        preprocessing_path,
-    ) = save_run_metadata(
-        config=config,
-        total_steps=total_steps,
-        warmup_steps=warmup_steps,
-        record_every=record_every,
-        checkpoint=checkpoint,
-        return_scaler=return_scaler,
-        covariate_scaler=(
-            covariate_scaler
-        ),
-    )
 
     print()
     print(
@@ -1452,18 +1454,6 @@ def main() -> None:
     print(
         "Checkpoint:",
         result.checkpoint_path,
-    )
-
-    save_run_metadata(
-        config=config,
-        total_steps=total_steps,
-        warmup_steps=warmup_steps,
-        record_every=record_every,
-        checkpoint=checkpoint,
-        return_scaler=return_scaler,
-        covariate_scaler=(
-            covariate_scaler
-        ),
     )
 
 
