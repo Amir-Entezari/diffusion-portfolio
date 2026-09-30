@@ -320,3 +320,67 @@ def test_fit_writes_final_checkpoint(
     assert result.checkpoint_path == str(
         checkpoint
     )
+    
+def test_training_can_resume_from_checkpoint(
+    tmp_path: Path,
+):
+    checkpoint = (
+        tmp_path
+        / "resume.pt"
+    )
+
+    first_model = make_model()
+
+    loader = make_loader()
+
+    first_result = fit_diffolio_steps(
+        first_model,
+        loader,
+        total_steps=2,
+        warmup_steps=1,
+        max_learning_rate=1e-3,
+        weight_decay=0.0,
+        device="cpu",
+        checkpoint_path=checkpoint,
+        record_every=1,
+        verbose=False,
+    )
+
+    assert first_result.final_step == 2
+
+    resumed_model = make_model()
+
+    resumed_result = fit_diffolio_steps(
+        resumed_model,
+        loader,
+        total_steps=4,
+        warmup_steps=1,
+        max_learning_rate=1e-3,
+        weight_decay=0.0,
+        device="cpu",
+        checkpoint_path=checkpoint,
+        resume_checkpoint=checkpoint,
+        record_every=1,
+        verbose=False,
+    )
+
+    assert resumed_result.final_step == 4
+
+    assert [
+        record.step
+        for record
+        in resumed_result.history
+    ] == [
+        3,
+        4,
+    ]
+
+    saved = torch.load(
+        checkpoint,
+        map_location="cpu",
+        weights_only=False,
+    )
+
+    assert saved[
+        "step"
+    ] == 4

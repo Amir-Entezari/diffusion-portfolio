@@ -57,6 +57,8 @@ training:
   num_workers: 0
 
   checkpoint_path: "artifacts/diffolio/diffolio_100k.pt"
+  # Operational safeguard for long cloud runs.
+  checkpoint_every: 5000
 
 inference:
   sampler: ddim

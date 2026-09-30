@@ -243,6 +243,8 @@ def fit_diffolio_steps(
     gradient_clip_norm: float | None = None,
     device: str | torch.device = "cpu",
     checkpoint_path: str | Path | None = None,
+    checkpoint_every: int | None = None,
+    resume_checkpoint: str | Path | None = None,
     record_every: int = 100,
     verbose: bool = True,
 ) -> DiffolioFitResult:
@@ -292,6 +294,15 @@ def fit_diffolio_steps(
         raise ValueError(
             "record_every must be positive"
         )
+        
+    if (
+        checkpoint_every is not None
+        and checkpoint_every <= 0
+    ):
+        raise ValueError(
+            "checkpoint_every must be positive "
+            "when supplied"
+        )
 
     if len(
         train_loader
@@ -321,6 +332,56 @@ def fit_diffolio_steps(
         weight_decay=weight_decay,
     )
 
+    start_step = 0
+
+    if resume_checkpoint is not None:
+        resume_checkpoint = Path(
+            resume_checkpoint
+        )
+
+        if not resume_checkpoint.exists():
+            raise FileNotFoundError(
+                "Resume checkpoint does not exist: "
+                f"{resume_checkpoint}"
+            )
+
+        saved = torch.load(
+            resume_checkpoint,
+            map_location=device,
+            weights_only=False,
+        )
+
+        model.load_state_dict(
+            saved[
+                "model_state_dict"
+            ]
+        )
+
+        optimizer.load_state_dict(
+            saved[
+                "optimizer_state_dict"
+            ]
+        )
+
+        start_step = int(
+            saved[
+                "step"
+            ]
+        )
+
+        if start_step >= total_steps:
+            raise ValueError(
+                "Resume checkpoint step "
+                f"{start_step} is not below "
+                f"total_steps={total_steps}"
+            )
+
+        if verbose:
+            print(
+                "Resuming training from "
+                f"step {start_step}"
+            )
+
     iterator = iter(
         train_loader
     )
@@ -330,7 +391,7 @@ def fit_diffolio_steps(
     ] = []
 
     for step in range(
-        1,
+        start_step + 1,
         total_steps + 1,
     ):
         try:
@@ -421,6 +482,30 @@ def fit_diffolio_steps(
             )
 
         optimizer.step()
+        if (
+            checkpoint_path is not None
+            and checkpoint_every is not None
+            and step % checkpoint_every == 0
+            and step != total_steps
+        ):
+            _save_diffolio_checkpoint(
+                checkpoint_path,
+                model=model,
+                optimizer=optimizer,
+                step=step,
+                total_steps=total_steps,
+                warmup_steps=warmup_steps,
+                max_learning_rate=(
+                    max_learning_rate
+                ),
+                weight_decay=weight_decay,
+            )
+
+            if verbose:
+                print(
+                    f"Checkpoint saved at step "
+                    f"{step}: {checkpoint_path}"
+                )
 
         should_record = (
             step == 1
