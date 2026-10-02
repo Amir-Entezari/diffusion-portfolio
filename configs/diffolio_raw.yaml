@@ -17,7 +17,10 @@ data:
 
   # Paper-literal variant:
   # historical and target excess returns stay in raw decimal units.
+    # Paper-literal variant:
+  # historical and target excess returns stay in raw decimal units.
   return_scaling: none
+  covariate_scaling: train_zscore
 
 model:
   type: diffolio
@@ -63,8 +66,9 @@ training:
   checkpoint_every: 5000
 
   # Durable cross-session backup.
+    # Durable cross-session backup.
   kaggle_backup:
-    enabled: true
+    enabled: false
     dataset_handle: "amirentezari/diffolio-checkpoints"
     every_steps: 10000
 
