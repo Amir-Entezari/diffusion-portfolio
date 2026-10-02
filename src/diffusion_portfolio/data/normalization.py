@@ -116,7 +116,39 @@ class TrainStandardizer:
             columns=table.columns,
             eps=eps,
         )
+    @classmethod
+    def identity(
+        cls,
+        columns: tuple[str, ...],
+    ) -> "TrainStandardizer":
+        """Create a no-op scaler for raw-return model space."""
 
+        columns = tuple(
+            columns
+        )
+
+        if len(
+            columns
+        ) == 0:
+            raise ValueError(
+                "columns cannot be empty"
+            )
+
+        return cls(
+            mean=np.zeros(
+                len(
+                    columns
+                ),
+                dtype=np.float64,
+            ),
+            std=np.ones(
+                len(
+                    columns
+                ),
+                dtype=np.float64,
+            ),
+            columns=columns,
+        )
     def transform(
         self,
         table: ReturnTable,

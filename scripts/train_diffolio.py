@@ -434,14 +434,50 @@ def prepare_data(
     # Train-only normalization.
     # --------------------------------------------------------
 
-    return_scaler = (
-        TrainStandardizer.fit(
-            raw_returns,
-            train_end=data_cfg[
-                "train_end"
-            ],
+        # --------------------------------------------------------
+    # Return representation.
+    #
+    # train_zscore:
+    #     Legacy reproduction assumption used by the first
+    #     100k experiment.
+    #
+    # none:
+    #     Paper-literal interpretation: historical and target
+    #     excess returns remain in raw decimal-return units.
+    # --------------------------------------------------------
+
+    return_scaling = str(
+        data_cfg.get(
+            "return_scaling",
+            "train_zscore",
         )
     )
+
+    if (
+        return_scaling
+        == "train_zscore"
+    ):
+        return_scaler = (
+            TrainStandardizer.fit(
+                raw_returns,
+                train_end=data_cfg[
+                    "train_end"
+                ],
+            )
+        )
+
+    elif return_scaling == "none":
+        return_scaler = (
+            TrainStandardizer.identity(
+                raw_returns.columns
+            )
+        )
+
+    else:
+        raise ValueError(
+            "Unsupported data.return_scaling: "
+            f"{return_scaling}"
+        )
 
     model_returns = (
         return_scaler.transform(
@@ -449,6 +485,31 @@ def prepare_data(
         )
     )
 
+    print(
+        "Return scaling:",
+        return_scaling,
+    )
+    covariate_scaling = str(
+        data_cfg.get(
+            "covariate_scaling",
+            "train_zscore",
+        )
+    )
+
+    if (
+        covariate_scaling
+        != "train_zscore"
+    ):
+        raise ValueError(
+            "Diffolio currently requires "
+            "data.covariate_scaling="
+            "'train_zscore'"
+        )
+
+    print(
+        "Covariate scaling:",
+        covariate_scaling,
+    )
     covariate_scaler = (
         CovariateStandardizer.fit(
             asset_covariates,

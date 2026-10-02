@@ -1,0 +1,80 @@
+seed: 42
+
+data:
+  dataset: ken_french_12
+  frequency: daily
+
+  goyal_path: "data/raw/Data2025.xlsx"
+
+  sample_start: "1958-01-01"
+  sample_end: "2023-12-31"
+
+  train_end: "1999-12-31"
+  val_end: "2004-12-31"
+
+  lookback: 63
+  horizon: 1
+
+  # Paper-literal variant:
+  # historical and target excess returns stay in raw decimal units.
+  return_scaling: none
+
+model:
+  type: diffolio
+
+  n_assets: 12
+  n_asset_characteristics: 10
+  n_systematic: 8
+
+  hidden_dim: 128
+  num_heads: 4
+  mlp_dim: 512
+  time_embedding_dim: 32
+
+  prediction_type: epsilon
+
+  diffusion_steps: 1000
+  schedule: linear
+  beta_start: 0.0001
+  beta_end: 0.02
+
+  lambda_corr: 0.05
+
+training:
+  batch_size: 1024
+
+  total_steps: 100000
+  warmup_steps: 1000
+  max_learning_rate: 0.0001
+
+  # Paper specifies AdamW but does not state weight decay.
+  # Explicit reproduction convention: PyTorch AdamW default.
+  weight_decay: 0.01
+
+  # Not specified by the paper.
+  gradient_clip_norm: null
+
+  record_every: 100
+  num_workers: 0
+
+  checkpoint_path: "artifacts/diffolio_raw/diffolio_raw_100k.pt"
+
+  # Local /kaggle/working checkpoint.
+  checkpoint_every: 5000
+
+  # Durable cross-session backup.
+  kaggle_backup:
+    enabled: true
+    dataset_handle: "amirentezari/diffolio-checkpoints"
+    every_steps: 10000
+
+inference:
+  sampler: ddim
+  eta: 0.0
+  sampling_steps: 50
+  n_scenarios: 100
+
+evaluation:
+  inverse_transform_returns: true
+  report_distribution_metrics: true
+  report_portfolio_metrics: true

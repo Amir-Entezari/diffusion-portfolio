@@ -220,3 +220,53 @@ def test_unknown_asset_dimension_is_rejected():
                 dtype=np.float32,
             )
         )
+        
+        
+def test_identity_standardizer_preserves_raw_returns():
+    table = make_table(
+        10
+    )
+
+    scaler = TrainStandardizer.identity(
+        table.columns
+    )
+
+    transformed = scaler.transform(
+        table
+    )
+
+    recovered = scaler.inverse_transform(
+        transformed.returns
+    )
+
+    np.testing.assert_allclose(
+        scaler.mean,
+        np.zeros(
+            len(
+                table.columns
+            )
+        ),
+    )
+
+    np.testing.assert_allclose(
+        scaler.std,
+        np.ones(
+            len(
+                table.columns
+            )
+        ),
+    )
+
+    np.testing.assert_allclose(
+        transformed.returns,
+        table.returns,
+        atol=0.0,
+        rtol=0.0,
+    )
+
+    np.testing.assert_allclose(
+        recovered,
+        table.returns,
+        atol=0.0,
+        rtol=0.0,
+    )
