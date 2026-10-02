@@ -19,10 +19,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-cde = ["torchdiffeq>=0.2.3"]
+cde = ["torchcde==0.2.5"]
 topology = ["gudhi>=3.8.0"]
-research = ["torchdiffeq>=0.2.3", "gudhi>=3.8.0"]
-dev = ["pytest>=7.3", "pytest-cov>=4.1"]
+research = ["torchcde==0.2.5", "gudhi>=3.8.0"]
+dev = [
+  "pytest>=7.3",
+  "pytest-cov>=4.1",
+  "torchcde==0.2.5",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
