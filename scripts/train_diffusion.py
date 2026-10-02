@@ -153,7 +153,10 @@ def main() -> None:
         "Prediction type:",
         cfg.model.prediction_type,
     )
-
+    print(
+        "History encoder:",
+        cfg.model.history_encoder,
+    )
     print(
         "Diffusion steps:",
         cfg.model.diffusion_steps,
@@ -252,6 +255,31 @@ def main() -> None:
         ),
         n_res_blocks=(
             cfg.model.n_res_blocks
+        ),
+        history_encoder_type=(
+            cfg.model.history_encoder
+        ),
+        cde_hidden_dim=(
+            cfg.model.cde_hidden_dim
+        ),
+        cde_drift_hidden_dim=(
+            cfg.model.cde_drift_hidden_dim
+        ),
+        cde_sensitivity_hidden_dim=(
+            cfg.model
+            .cde_sensitivity_hidden_dim
+        ),
+        cde_solver=(
+            cfg.model.cde_solver
+        ),
+        cde_rtol=(
+            cfg.model.cde_rtol
+        ),
+        cde_atol=(
+            cfg.model.cde_atol
+        ),
+        cde_use_adjoint=(
+            cfg.model.cde_use_adjoint
         ),
     )
 

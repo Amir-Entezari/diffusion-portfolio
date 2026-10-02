@@ -108,3 +108,151 @@ class HistoryEncoder(nn.Module):
         return self.network(
             flattened
         )
+        
+        
+class CDEHistoryEncoder(nn.Module):
+    """Encode return history using the proposal Neural CDE.
+
+    The full hidden trajectory H(t) remains accessible for later
+    Phase-1 experiments, whilst forward() returns one fixed-size
+    conditioning vector for the diffusion model.
+    """
+
+    def __init__(
+        self,
+        *,
+        lookback: int,
+        n_assets: int,
+        condition_dim: int,
+        hidden_dim: int = 128,
+        drift_hidden_dim: int = 256,
+        sensitivity_hidden_dim: int = 256,
+        solver: str = "dopri5",
+        rtol: float = 1e-4,
+        atol: float = 1e-5,
+        use_adjoint: bool = True,
+    ) -> None:
+        super().__init__()
+
+        if lookback < 2:
+            raise ValueError(
+                "lookback must be at least 2"
+            )
+
+        if n_assets <= 0:
+            raise ValueError(
+                "n_assets must be positive"
+            )
+
+        if condition_dim <= 0:
+            raise ValueError(
+                "condition_dim must be positive"
+            )
+
+        from diffusion_portfolio.models.cde import (
+            NeuralCDE,
+        )
+
+        self.lookback = lookback
+        self.n_assets = n_assets
+        self.condition_dim = condition_dim
+        self.hidden_dim = hidden_dim
+
+        self.cde = NeuralCDE(
+            input_dim=n_assets,
+            hidden_dim=hidden_dim,
+            drift_hidden_dim=drift_hidden_dim,
+            sensitivity_hidden_dim=(
+                sensitivity_hidden_dim
+            ),
+            solver=solver,
+            rtol=rtol,
+            atol=atol,
+            use_adjoint=use_adjoint,
+        )
+
+        if hidden_dim == condition_dim:
+            self.readout = nn.Identity()
+
+        else:
+            self.readout = nn.Sequential(
+                nn.LayerNorm(
+                    hidden_dim
+                ),
+                nn.Linear(
+                    hidden_dim,
+                    condition_dim,
+                ),
+            )
+
+    def _validate_history(
+        self,
+        history: Tensor,
+    ) -> None:
+        if history.ndim != 3:
+            raise ValueError(
+                "history must have shape "
+                "[batch, lookback, assets]"
+            )
+
+        if history.shape[1] != self.lookback:
+            raise ValueError(
+                "history lookback dimension "
+                "does not match encoder"
+            )
+
+        if history.shape[2] != self.n_assets:
+            raise ValueError(
+                "history asset dimension "
+                "does not match encoder"
+            )
+
+    def encode_trajectory(
+        self,
+        history: Tensor,
+    ) -> Tensor:
+        """Return the complete latent path H(t).
+
+        Shape:
+            [batch, lookback, hidden_dim]
+
+        This will later be consumed by the TDA experiment.
+        """
+
+        self._validate_history(
+            history
+        )
+
+        return self.cde(
+            history
+        )
+
+    def forward(
+        self,
+        history: Tensor,
+    ) -> Tensor:
+        """Return the final CDE state as diffusion conditioning."""
+
+        self._validate_history(
+            history
+        )
+
+        final_state = (
+            self.cde.encode_final(
+                history
+            )
+        )
+
+        condition = self.readout(
+            final_state
+        )
+
+        if condition.shape != (
+            history.shape[0],
+            self.condition_dim,
+        ):
+            raise RuntimeError(
+                "Unexpected CDE condition shape"
+            )
+
+        return condition

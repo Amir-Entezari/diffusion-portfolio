@@ -609,3 +609,160 @@ def test_invalid_prediction_type_is_rejected():
             time_embed_dim=16,
             n_res_blocks=1,
         )
+        
+        
+def test_cde_history_encoder_output_shape():
+    from diffusion_portfolio.models.diffusion import (
+        CDEHistoryEncoder,
+    )
+
+    encoder = CDEHistoryEncoder(
+        lookback=8,
+        n_assets=3,
+        condition_dim=6,
+        hidden_dim=8,
+        drift_hidden_dim=12,
+        sensitivity_hidden_dim=12,
+        solver="dopri5",
+        rtol=1e-3,
+        atol=1e-4,
+        use_adjoint=False,
+    )
+
+    history = torch.randn(
+        2,
+        8,
+        3,
+    )
+
+    condition = encoder(
+        history
+    )
+
+    trajectory = (
+        encoder.encode_trajectory(
+            history
+        )
+    )
+
+    assert condition.shape == (
+        2,
+        6,
+    )
+
+    assert trajectory.shape == (
+        2,
+        8,
+        8,
+    )
+
+    assert torch.isfinite(
+        condition
+    ).all()
+
+    assert torch.isfinite(
+        trajectory
+    ).all()
+
+
+def test_diffusion_training_loss_with_cde_conditioning():
+    model = ConditionalDiffusionModel(
+        lookback=8,
+        n_assets=3,
+        condition_dim=8,
+        history_hidden_dim=16,
+        diffusion_steps=10,
+        schedule_type="cosine",
+        prediction_type="v_prediction",
+        channels=[
+            8,
+            16,
+        ],
+        time_embed_dim=8,
+        n_res_blocks=1,
+        history_encoder_type="cde",
+        cde_hidden_dim=8,
+        cde_drift_hidden_dim=12,
+        cde_sensitivity_hidden_dim=12,
+        cde_solver="dopri5",
+        cde_rtol=1e-3,
+        cde_atol=1e-4,
+        cde_use_adjoint=True,
+    )
+
+    history = torch.randn(
+        2,
+        8,
+        3,
+    )
+
+    target = torch.randn(
+        2,
+        1,
+        3,
+    )
+
+    output = model.training_loss(
+        history,
+        target,
+    )
+
+    assert output.loss.ndim == 0
+
+    assert torch.isfinite(
+        output.loss
+    )
+
+    output.loss.backward()
+
+    cde_gradients = [
+        parameter.grad
+        for parameter
+        in (
+            model
+            .history_encoder
+            .cde
+            .parameters()
+        )
+        if parameter.grad is not None
+    ]
+
+    denoiser_gradients = [
+        parameter.grad
+        for parameter
+        in model.score_network.parameters()
+        if parameter.grad is not None
+    ]
+
+    assert cde_gradients
+    assert denoiser_gradients
+
+    assert all(
+        torch.isfinite(
+            gradient
+        ).all()
+        for gradient
+        in cde_gradients
+    )
+
+    assert all(
+        torch.isfinite(
+            gradient
+        ).all()
+        for gradient
+        in denoiser_gradients
+    )
+
+
+def test_default_diffusion_still_uses_mlp_history_encoder():
+    model = make_model()
+
+    assert isinstance(
+        model.history_encoder,
+        HistoryEncoder,
+    )
+
+    assert (
+        model.history_encoder_type
+        == "mlp"
+    )

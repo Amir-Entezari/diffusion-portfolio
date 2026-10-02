@@ -32,7 +32,16 @@ class ModelConfig:
 
     condition_dim: int = 128
     history_hidden_dim: int = 256
+    history_encoder: str = "mlp"
 
+    cde_hidden_dim: int = 128
+    cde_drift_hidden_dim: int = 256
+    cde_sensitivity_hidden_dim: int = 256
+
+    cde_solver: str = "dopri5"
+    cde_rtol: float = 1e-4
+    cde_atol: float = 1e-5
+    cde_use_adjoint: bool = True
     diffusion_steps: int = 100
     schedule: str = "cosine"
     prediction_type: str = "v_prediction"
@@ -142,7 +151,48 @@ def load_config(path: str | Path) -> MVPConfig:
         raise ValueError(
             "history_hidden_dim must be positive"
         )
+    if cfg.model.history_encoder not in {
+        "mlp",
+        "cde",
+    }:
+        raise ValueError(
+            "model.history_encoder must "
+            "be 'mlp' or 'cde'"
+        )
 
+    if cfg.model.cde_hidden_dim <= 0:
+        raise ValueError(
+            "cde_hidden_dim must be positive"
+        )
+
+    if (
+        cfg.model.cde_drift_hidden_dim
+        <= 0
+    ):
+        raise ValueError(
+            "cde_drift_hidden_dim "
+            "must be positive"
+        )
+
+    if (
+        cfg.model
+        .cde_sensitivity_hidden_dim
+        <= 0
+    ):
+        raise ValueError(
+            "cde_sensitivity_hidden_dim "
+            "must be positive"
+        )
+
+    if cfg.model.cde_rtol <= 0:
+        raise ValueError(
+            "cde_rtol must be positive"
+        )
+
+    if cfg.model.cde_atol <= 0:
+        raise ValueError(
+            "cde_atol must be positive"
+        )
     if cfg.model.time_embed_dim <= 0:
         raise ValueError(
             "time_embed_dim must be positive"

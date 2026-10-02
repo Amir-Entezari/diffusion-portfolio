@@ -10,6 +10,7 @@ import torch.nn.functional as F
 from torch import Tensor
 
 from diffusion_portfolio.models.diffusion.conditioning import (
+    CDEHistoryEncoder,
     HistoryEncoder,
 )
 from diffusion_portfolio.models.diffusion.schedule import (
@@ -63,6 +64,14 @@ class ConditionalDiffusionModel(nn.Module):
         prediction_type: str,
         time_embed_dim: int,
         n_res_blocks: int,
+        history_encoder_type: str = "mlp",
+        cde_hidden_dim: int = 128,
+        cde_drift_hidden_dim: int = 256,
+        cde_sensitivity_hidden_dim: int = 256,
+        cde_solver: str = "dopri5",
+        cde_rtol: float = 1e-4,
+        cde_atol: float = 1e-5,
+        cde_use_adjoint: bool = True,
     ) -> None:
         super().__init__()
 
@@ -90,16 +99,51 @@ class ConditionalDiffusionModel(nn.Module):
             diffusion_steps
         )
 
-        self.history_encoder = (
-            HistoryEncoder(
-                lookback=lookback,
-                n_assets=n_assets,
-                condition_dim=condition_dim,
-                hidden_dim=(
-                    history_hidden_dim
-                ),
-            )
+        self.history_encoder_type = (
+            history_encoder_type
         )
+
+        if history_encoder_type == "mlp":
+            self.history_encoder = (
+                HistoryEncoder(
+                    lookback=lookback,
+                    n_assets=n_assets,
+                    condition_dim=condition_dim,
+                    hidden_dim=(
+                        history_hidden_dim
+                    ),
+                )
+            )
+
+        elif history_encoder_type == "cde":
+            self.history_encoder = (
+                CDEHistoryEncoder(
+                    lookback=lookback,
+                    n_assets=n_assets,
+                    condition_dim=condition_dim,
+                    hidden_dim=(
+                        cde_hidden_dim
+                    ),
+                    drift_hidden_dim=(
+                        cde_drift_hidden_dim
+                    ),
+                    sensitivity_hidden_dim=(
+                        cde_sensitivity_hidden_dim
+                    ),
+                    solver=cde_solver,
+                    rtol=cde_rtol,
+                    atol=cde_atol,
+                    use_adjoint=(
+                        cde_use_adjoint
+                    ),
+                )
+            )
+
+        else:
+            raise ValueError(
+                "history_encoder_type must be "
+                "'mlp' or 'cde'"
+            )
 
         self.noise_schedule = (
             NoiseSchedule(

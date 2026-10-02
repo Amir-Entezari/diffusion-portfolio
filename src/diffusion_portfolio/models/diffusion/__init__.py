@@ -1,4 +1,7 @@
-from .conditioning import HistoryEncoder
+from .conditioning import (
+    CDEHistoryEncoder,
+    HistoryEncoder,
+)
 from .model import (
     ConditionalDiffusionModel,
     DiffusionTrainingOutput,
@@ -16,4 +19,5 @@ __all__ = [
     "NoiseSchedule",
     "ScoreNetwork",
     "SinusoidalTimeEmbedding",
+    "CDEHistoryEncoder",
 ]
