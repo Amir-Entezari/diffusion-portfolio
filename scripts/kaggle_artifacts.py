@@ -4,19 +4,22 @@ This script is operational tooling, not part of the research model.
 
 Typical Kaggle workflow:
 
-    # Once, when the central dataset is first created:
-    python scripts/kaggle_artifacts.py init \
-        --handle USERNAME/diffusion-portfolio
-
-    # Once at the start of later Kaggle sessions:
-    python scripts/kaggle_artifacts.py restore \
-        --handle USERNAME/diffusion-portfolio
-
-    # After an experiment produces artifacts worth keeping:
+    # First ever backup:
+    # Creates both the local artifact store and Kaggle Dataset.
     python scripts/kaggle_artifacts.py backup \
         --handle USERNAME/diffusion-portfolio \
         --experiment phase0/neural_cde_rk4x4 \
         --source /kaggle/working/phase0_cde_rk4x4
+
+    # At the start of later Kaggle sessions:
+    python scripts/kaggle_artifacts.py restore \
+        --handle USERNAME/diffusion-portfolio
+
+    # Then back up new/updated experiment artifacts:
+    python scripts/kaggle_artifacts.py backup \
+        --handle USERNAME/diffusion-portfolio \
+        --experiment phase1/example \
+        --source /kaggle/working/example
 
 The local artifact mirror defaults to:
 
@@ -180,57 +183,6 @@ def _git_commit() -> str | None:
     )
 
 
-def init_store(
-    *,
-    handle: str,
-    root: Path,
-) -> None:
-    if root.exists() and any(
-        root.iterdir()
-    ):
-        raise RuntimeError(
-            f"Refusing to initialize "
-            f"non-empty directory: {root}"
-        )
-
-    root.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    _write_marker(
-        root,
-        handle,
-    )
-
-    kagglehub = (
-        _kagglehub()
-    )
-
-    kagglehub.dataset_upload(
-        handle,
-        str(root),
-        version_notes=(
-            "Initialize diffusion-portfolio "
-            "artifact store"
-        ),
-    )
-
-    print(
-        "Initialized artifact store:"
-    )
-
-    print(
-        "  handle:",
-        handle,
-    )
-
-    print(
-        "  local mirror:",
-        root,
-    )
-
-
 def restore_store(
     *,
     handle: str,
@@ -302,10 +254,52 @@ def backup_experiment(
             source
         )
 
-    _validate_store(
-        root,
-        handle,
+    marker_path = (
+        _marker_path(
+            root
+        )
     )
+
+    if not root.exists():
+        root.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        _write_marker(
+            root,
+            handle,
+        )
+
+        print(
+            "Creating new artifact store:"
+        )
+
+        print(
+            "  handle:",
+            handle,
+        )
+
+    elif not marker_path.exists():
+        if any(
+            root.iterdir()
+        ):
+            raise RuntimeError(
+                f"{root} is non-empty but is not "
+                "a restored artifact store. "
+                "Run restore before backup."
+            )
+
+        _write_marker(
+            root,
+            handle,
+        )
+
+    else:
+        _validate_store(
+            root,
+            handle,
+        )
 
     relative_destination = (
         _validate_experiment(
@@ -427,16 +421,6 @@ def parse_args() -> argparse.Namespace:
         )
     )
 
-    init_parser = (
-        subparsers.add_parser(
-            "init"
-        )
-    )
-
-    init_parser.add_argument(
-        "--handle",
-        required=True,
-    )
 
     restore_parser = (
         subparsers.add_parser(
@@ -487,13 +471,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    if args.command == "init":
-        init_store(
-            handle=args.handle,
-            root=args.root,
-        )
-
-    elif args.command == "restore":
+    if args.command == "restore":
         restore_store(
             handle=args.handle,
             root=args.root,
