@@ -261,3 +261,79 @@ def test_batch_specific_timestamp_grids_are_rejected():
             path,
             timestamps=timestamps,
         )
+    
+
+def test_rk4_cde_returns_finite_trajectory_and_gradients():
+    torch.manual_seed(
+        42
+    )
+
+    model = NeuralCDE(
+        input_dim=3,
+        hidden_dim=8,
+        drift_hidden_dim=12,
+        sensitivity_hidden_dim=12,
+        solver="rk4",
+        rtol=1e-3,
+        atol=1e-4,
+        use_adjoint=False,
+        fixed_steps_per_interval=4,
+    )
+
+    path = torch.randn(
+        2,
+        8,
+        3,
+    )
+
+    trajectory = model(
+        path
+    )
+
+    assert trajectory.shape == (
+        2,
+        8,
+        8,
+    )
+
+    assert torch.isfinite(
+        trajectory
+    ).all()
+
+    loss = (
+        trajectory
+        .pow(2)
+        .mean()
+    )
+
+    loss.backward()
+
+    gradients = [
+        parameter.grad
+        for parameter
+        in model.parameters()
+        if parameter.grad is not None
+    ]
+
+    assert gradients
+
+    assert all(
+        torch.isfinite(
+            gradient
+        ).all()
+        for gradient
+        in gradients
+    )
+
+
+def test_fixed_steps_per_interval_must_be_positive():
+    with pytest.raises(
+        ValueError,
+        match="fixed_steps_per_interval",
+    ):
+        NeuralCDE(
+            input_dim=3,
+            hidden_dim=8,
+            solver="rk4",
+            fixed_steps_per_interval=0,
+        )

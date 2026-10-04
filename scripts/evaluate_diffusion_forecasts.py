@@ -309,8 +309,12 @@ def main() -> None:
         cde_atol=(
             cfg.model.cde_atol
         ),
-        cde_use_adjoint=(
+                cde_use_adjoint=(
             cfg.model.cde_use_adjoint
+        ),
+        cde_fixed_steps_per_interval=(
+            cfg.model
+            .cde_fixed_steps_per_interval
         ),
     ).to(device)
 

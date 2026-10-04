@@ -42,6 +42,8 @@ class ModelConfig:
     cde_rtol: float = 1e-4
     cde_atol: float = 1e-5
     cde_use_adjoint: bool = True
+    cde_fixed_steps_per_interval: int = 4
+
     diffusion_steps: int = 100
     schedule: str = "cosine"
     prediction_type: str = "v_prediction"
@@ -193,6 +195,17 @@ def load_config(path: str | Path) -> MVPConfig:
         raise ValueError(
             "cde_atol must be positive"
         )
+
+    if (
+        cfg.model
+        .cde_fixed_steps_per_interval
+        <= 0
+    ):
+        raise ValueError(
+            "cde_fixed_steps_per_interval "
+            "must be positive"
+        )
+
     if cfg.model.time_embed_dim <= 0:
         raise ValueError(
             "time_embed_dim must be positive"

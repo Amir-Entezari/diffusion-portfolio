@@ -131,6 +131,7 @@ class CDEHistoryEncoder(nn.Module):
         rtol: float = 1e-4,
         atol: float = 1e-5,
         use_adjoint: bool = True,
+        fixed_steps_per_interval: int = 4,
     ) -> None:
         super().__init__()
 
@@ -169,6 +170,9 @@ class CDEHistoryEncoder(nn.Module):
             rtol=rtol,
             atol=atol,
             use_adjoint=use_adjoint,
+            fixed_steps_per_interval=(
+                fixed_steps_per_interval
+            ),
         )
 
         if hidden_dim == condition_dim:

@@ -72,6 +72,7 @@ class ConditionalDiffusionModel(nn.Module):
         cde_rtol: float = 1e-4,
         cde_atol: float = 1e-5,
         cde_use_adjoint: bool = True,
+        cde_fixed_steps_per_interval: int = 4,
     ) -> None:
         super().__init__()
 
@@ -135,6 +136,9 @@ class ConditionalDiffusionModel(nn.Module):
                     atol=cde_atol,
                     use_adjoint=(
                         cde_use_adjoint
+                    ),
+                    fixed_steps_per_interval=(
+                        cde_fixed_steps_per_interval
                     ),
                 )
             )

@@ -211,6 +211,7 @@ class NeuralCDE(nn.Module):
         rtol: float = 1e-4,
         atol: float = 1e-5,
         use_adjoint: bool = True,
+        fixed_steps_per_interval: int = 4,
     ) -> None:
         super().__init__()
 
@@ -234,6 +235,13 @@ class NeuralCDE(nn.Module):
                 "atol must be positive"
             )
 
+        if fixed_steps_per_interval <= 0:
+            raise ValueError(
+                "fixed_steps_per_interval must be positive"
+            )
+
+        self.input_dim = input_dim
+
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
 
@@ -246,6 +254,9 @@ class NeuralCDE(nn.Module):
         )
         self.use_adjoint = bool(
             use_adjoint
+        )
+        self.fixed_steps_per_interval = int(
+            fixed_steps_per_interval
         )
 
         self.initial_projection = nn.Linear(
@@ -467,6 +478,43 @@ class NeuralCDE(nn.Module):
         initial_state: Tensor,
         output_times: Tensor,
     ) -> Tensor:
+        solver_kwargs = {}
+
+        if self.solver == "rk4":
+            grid_points = (
+                control.grid_points
+            )
+
+            if grid_points.numel() < 2:
+                raise RuntimeError(
+                    "RK4 requires at least two "
+                    "control grid points"
+                )
+
+            intervals = (
+                grid_points[1:]
+                - grid_points[:-1]
+            )
+
+            minimum_interval = (
+                intervals.min()
+            )
+
+            step_size = float(
+                (
+                    minimum_interval
+                    / self.fixed_steps_per_interval
+                )
+                .detach()
+                .cpu()
+            )
+
+            solver_kwargs[
+                "options"
+            ] = {
+                "step_size": step_size,
+            }
+
         trajectory = torchcde.cdeint(
             X=control,
             func=self.vector_field,
@@ -476,6 +524,7 @@ class NeuralCDE(nn.Module):
             method=self.solver,
             rtol=self.rtol,
             atol=self.atol,
+            **solver_kwargs,
         )
 
         if not torch.isfinite(
