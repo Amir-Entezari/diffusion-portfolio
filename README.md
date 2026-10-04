@@ -8,8 +8,9 @@ The proposal components are hypotheses to be tested one by one, not assumed-vali
 
 ## Current stage
 
-See [`ROADMAP.md`](ROADMAP.md). The current task is building and validating the Kenneth French 12 Industry
-Portfolios data pipeline for the scientific MVP.
+Research components are implemented and validated incrementally through experiment
+configs and scripts. Phase names describe experiment stages; reusable source code
+remains organized by model/component rather than by phase.
 
 ## Install
 
@@ -34,3 +35,8 @@ pytest
 
 The notebook is only an orchestrator. Source code lives in this repository. Kaggle should
 clone/pull an exact commit, install the package, run tests, then execute scripts/configs.
+
+Long-lived checkpoints and experiment outputs are stored separately from GitHub in one
+private Kaggle Dataset. `scripts/kaggle_artifacts.py` is a small Kaggle-only helper for
+restoring that artifact store once per session and backing up experiment directories.
+It is operational tooling and is not used by the model or training code.
