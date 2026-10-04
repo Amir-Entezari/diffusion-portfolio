@@ -28,9 +28,9 @@ model:
   cde_sensitivity_hidden_dim: 256
 
   cde_solver: dopri5
-  cde_rtol: 0.0001
-  cde_atol: 0.00001
-  cde_use_adjoint: true
+  cde_rtol: 0.000001
+  cde_atol: 0.0000001
+  cde_use_adjoint: false
 
   diffusion_steps: 100
   schedule: cosine
