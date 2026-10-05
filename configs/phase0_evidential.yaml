@@ -1,0 +1,19 @@
+seed: 42
+
+regimes:
+  n_classes: 3
+  score: cross_sectional_rms
+  quantiles: [0.333333, 0.666667]
+
+model:
+  input_dim: 128
+
+training:
+  epochs: 50
+  batch_size: 256
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  kl_anneal_epochs: 10
+
+evaluation:
+  ece_bins: 10
