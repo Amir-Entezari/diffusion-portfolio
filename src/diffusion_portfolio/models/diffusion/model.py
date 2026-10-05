@@ -148,7 +148,14 @@ class ConditionalDiffusionModel(nn.Module):
                 "history_encoder_type must be "
                 "'mlp' or 'cde'"
             )
-
+        # Optional Phase-0B routing layer.
+        #
+        # Identity preserves all existing baseline behavior and
+        # introduces no checkpoint parameters.
+        self.condition_adapter = (
+            nn.Identity()
+        )
+        
         self.noise_schedule = (
             NoiseSchedule(
                 n_steps=diffusion_steps,
@@ -207,7 +214,39 @@ class ConditionalDiffusionModel(nn.Module):
             )
 
         return target
+    def _encode_condition(
+        self,
+        history: Tensor,
+    ) -> Tensor:
+        """Encode history and apply an optional condition adapter."""
 
+        condition = (
+            self.history_encoder(
+                history
+            )
+        )
+
+        condition = (
+            self.condition_adapter(
+                condition
+            )
+        )
+
+        expected_shape = (
+            history.shape[0],
+            self.condition_dim,
+        )
+
+        if condition.shape != (
+            expected_shape
+        ):
+            raise RuntimeError(
+                "Condition adapter produced "
+                f"{tuple(condition.shape)}; "
+                f"expected {expected_shape}"
+            )
+
+        return condition
     def predict_model_output(
         self,
         noisy_target: Tensor,
@@ -242,7 +281,7 @@ class ConditionalDiffusionModel(nn.Module):
             )
 
         condition = (
-            self.history_encoder(
+            self._encode_condition(
                 history
             )
         )
@@ -676,9 +715,9 @@ class ConditionalDiffusionModel(nn.Module):
 
         batch_size = history.shape[0]
 
-        # Encode each historical window once.
+        # Encode and route each historical window once.
         condition = (
-            self.history_encoder(
+            self._encode_condition(
                 history
             )
         )
