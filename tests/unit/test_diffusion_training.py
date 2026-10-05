@@ -253,6 +253,73 @@ def test_fit_writes_best_checkpoint(
     assert "optimizer_state_dict" in saved
 
 
+def test_fit_resumes_from_last_checkpoint(
+    tmp_path: Path,
+):
+    best_path = (
+        tmp_path
+        / "best.pt"
+    )
+
+    last_path = (
+        tmp_path
+        / "last.pt"
+    )
+
+    model = make_model()
+
+    first = fit_diffusion(
+        model,
+        make_loader(),
+        make_loader(),
+        epochs=4,
+        learning_rate=1e-3,
+        weight_decay=0.0,
+        gradient_clip_norm=1.0,
+        validation_seed=123,
+        device="cpu",
+        checkpoint_path=best_path,
+        resume_path=last_path,
+        stop_after_epoch=2,
+        verbose=False,
+    )
+
+    assert len(
+        first.history
+    ) == 2
+
+    assert last_path.exists()
+
+    resumed_model = make_model()
+
+    second = fit_diffusion(
+        resumed_model,
+        make_loader(),
+        make_loader(),
+        epochs=4,
+        learning_rate=1e-3,
+        weight_decay=0.0,
+        gradient_clip_norm=1.0,
+        validation_seed=123,
+        device="cpu",
+        checkpoint_path=best_path,
+        resume_path=last_path,
+        stop_after_epoch=4,
+        verbose=False,
+    )
+
+    assert [
+        record.epoch
+        for record
+        in second.history
+    ] == [
+        1,
+        2,
+        3,
+        4,
+    ]
+    
+
 def test_invalid_epoch_count_is_rejected():
     model = make_model()
 

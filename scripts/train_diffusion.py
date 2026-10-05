@@ -56,6 +56,17 @@ def parse_args() -> argparse.Namespace:
         default="auto",
     )
 
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+    )
+
+    parser.add_argument(
+        "--stop-after-epoch",
+        type=int,
+        default=None,
+    )
+
     return parser.parse_args()
 
 
@@ -349,6 +360,15 @@ def main() -> None:
         checkpoint_path=(
             checkpoint_path
         ),
+        resume_path=(
+            output_dir
+            / "last.pt"
+            if args.resume
+            else None
+        ),
+        stop_after_epoch=(
+            args.stop_after_epoch
+        ),
         verbose=True,
     )
 
@@ -376,7 +396,41 @@ def main() -> None:
         / "history.csv",
         index=False,
     )
+    if (
+        args.stop_after_epoch is not None
+        and result.history
+        and result.history[-1].epoch
+        < cfg.training.epochs
+    ):
+        print()
+        print("=" * 72)
+        print("TRAINING CHUNK COMPLETE")
+        print("=" * 72)
 
+        print(
+            "Completed through epoch:",
+            result.history[-1].epoch,
+        )
+
+        print(
+            "Best epoch so far:",
+            result.best_epoch,
+        )
+
+        print(
+            "Best validation loss so far:",
+            result.best_val_loss,
+        )
+
+        print(
+            "Resume checkpoint:",
+            output_dir / "last.pt",
+        )
+
+        return
+
+    # ---------------------------------------------------------
+    # Small VALIDATION sampling sanity check.
     # ---------------------------------------------------------
     # Small VALIDATION sampling sanity check.
     #

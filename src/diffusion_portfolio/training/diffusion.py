@@ -265,6 +265,8 @@ def fit_diffusion(
     validation_seed: int,
     device: str | torch.device,
     checkpoint_path: str | Path | None = None,
+    resume_path: str | Path | None = None,
+    stop_after_epoch: int | None = None,
     verbose: bool = True,
 ) -> TrainingResult:
     """Train a conditional DDPM and restore its best validation state."""
@@ -304,9 +306,119 @@ def fit_diffusion(
     best_val_loss = float("inf")
     best_state = None
 
+    start_epoch = 1
+
+    if resume_path is not None:
+        resume_path = Path(
+            resume_path
+        )
+
+        if resume_path.exists():
+            saved = torch.load(
+                resume_path,
+                map_location=device,
+                weights_only=False,
+            )
+
+            model.load_state_dict(
+                saved[
+                    "model_state_dict"
+                ]
+            )
+
+            optimizer.load_state_dict(
+                saved[
+                    "optimizer_state_dict"
+                ]
+            )
+
+            records = [
+                EpochRecord(
+                    epoch=int(
+                        item["epoch"]
+                    ),
+                    train_loss=float(
+                        item["train_loss"]
+                    ),
+                    val_loss=float(
+                        item["val_loss"]
+                    ),
+                )
+                for item
+                in saved["history"]
+            ]
+
+            best_epoch = int(
+                saved["best_epoch"]
+            )
+
+            best_val_loss = float(
+                saved["best_val_loss"]
+            )
+
+            torch.set_rng_state(
+                saved[
+                    "torch_rng_state"
+                ]
+            )
+
+            if (
+                saved[
+                    "cuda_rng_state"
+                ]
+                is not None
+                and torch.cuda.is_available()
+            ):
+                torch.cuda.set_rng_state_all(
+                    saved[
+                        "cuda_rng_state"
+                    ]
+                )
+
+            loader_generator = getattr(
+                train_loader,
+                "generator",
+                None,
+            )
+
+            if (
+                loader_generator
+                is not None
+                and saved[
+                    "loader_rng_state"
+                ]
+                is not None
+            ):
+                loader_generator.set_state(
+                    saved[
+                        "loader_rng_state"
+                    ]
+                )
+
+            start_epoch = (
+                int(
+                    saved["epoch"]
+                )
+                + 1
+            )
+
+            if verbose:
+                print(
+                    "Resuming from epoch "
+                    f"{start_epoch - 1}"
+                )
+
+    end_epoch = epochs
+
+    if stop_after_epoch is not None:
+        end_epoch = min(
+            epochs,
+            stop_after_epoch,
+        )
+
     for epoch in range(
-        1,
-        epochs + 1,
+        start_epoch,
+        end_epoch + 1,
     ):
         train_loss = train_one_epoch(
             model,
@@ -364,10 +476,78 @@ def fit_diffusion(
                     train_loss=train_loss,
                     val_loss=val_loss,
                 )
+        if resume_path is not None:
+            loader_generator = getattr(
+                train_loader,
+                "generator",
+                None,
+            )
 
+            torch.save(
+                {
+                    "epoch": epoch,
+                    "model_state_dict": (
+                        model.state_dict()
+                    ),
+                    "optimizer_state_dict": (
+                        optimizer.state_dict()
+                    ),
+                    "history": [
+                        {
+                            "epoch": record.epoch,
+                            "train_loss": (
+                                record.train_loss
+                            ),
+                            "val_loss": (
+                                record.val_loss
+                            ),
+                        }
+                        for record
+                        in records
+                    ],
+                    "best_epoch": best_epoch,
+                    "best_val_loss": (
+                        best_val_loss
+                    ),
+                    "torch_rng_state": (
+                        torch.get_rng_state()
+                    ),
+                    "cuda_rng_state": (
+                        torch.cuda.get_rng_state_all()
+                        if torch.cuda.is_available()
+                        else None
+                    ),
+                    "loader_rng_state": (
+                        loader_generator.get_state()
+                        if loader_generator
+                        is not None
+                        else None
+                    ),
+                },
+                resume_path,
+            )
     if best_state is None:
-        raise RuntimeError(
-            "Training finished without a valid model state"
+        if (
+            checkpoint_path is None
+            or not Path(
+                checkpoint_path
+            ).exists()
+        ):
+            raise RuntimeError(
+                "Training finished without "
+                "a valid model state"
+            )
+
+        best_checkpoint = torch.load(
+            checkpoint_path,
+            map_location=device,
+            weights_only=False,
+        )
+
+        best_state = (
+            best_checkpoint[
+                "model_state_dict"
+            ]
         )
 
     # All downstream evaluation should use the best validation model,
