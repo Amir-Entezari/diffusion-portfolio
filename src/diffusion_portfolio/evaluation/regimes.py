@@ -42,6 +42,58 @@ def cross_sectional_rms(
         )
     )
 
+def trailing_cross_sectional_rms(
+    history: np.ndarray,
+    *,
+    recent_days: int = 20,
+) -> np.ndarray:
+    """Compute trailing market stress from historical returns only."""
+
+    values = np.asarray(
+        history,
+        dtype=np.float64,
+    )
+
+    if values.ndim != 3:
+        raise ValueError(
+            "history must have shape "
+            "[samples, lookback, assets]"
+        )
+
+    if recent_days <= 0:
+        raise ValueError(
+            "recent_days must be positive"
+        )
+
+    if recent_days > values.shape[1]:
+        raise ValueError(
+            "recent_days cannot exceed lookback"
+        )
+
+    if not np.isfinite(
+        values
+    ).all():
+        raise ValueError(
+            "history contains non-finite values"
+        )
+
+    recent = values[
+        :,
+        -recent_days:,
+        :,
+    ]
+
+    return np.sqrt(
+        np.mean(
+            np.square(
+                recent
+            ),
+            axis=(
+                1,
+                2,
+            ),
+        )
+    )
 
 def fit_regime_thresholds(
     train_scores: np.ndarray,

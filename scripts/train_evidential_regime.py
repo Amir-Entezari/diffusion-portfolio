@@ -32,8 +32,8 @@ from diffusion_portfolio.data import (
 )
 from diffusion_portfolio.evaluation.regimes import (
     assign_regime_labels,
-    cross_sectional_rms,
     fit_regime_thresholds,
+    trailing_cross_sectional_rms,
 )
 from diffusion_portfolio.models.diffusion import (
     ConditionalDiffusionModel,
@@ -243,7 +243,7 @@ def extract_features(
     )
 
     feature_parts = []
-    target_parts = []
+    history_parts = []
     dates = []
 
     encoder.eval()
@@ -263,26 +263,20 @@ def extract_features(
             features.detach().cpu()
         )
 
-        target_raw = batch[
-            "target_raw"
+        history_raw = batch[
+            "history_raw"
         ]
 
-        if (
-            target_raw.ndim != 3
-            or target_raw.shape[1] != 1
-        ):
+        if history_raw.ndim != 3:
             raise RuntimeError(
-                "Phase 0B expects horizon=1"
+                "Phase 0B expects history_raw "
+                "with shape [batch, lookback, assets]"
             )
 
-        target_parts.append(
-            target_raw[
-                :,
-                0,
-                :,
-            ].numpy()
+        history_parts.append(
+            history_raw.numpy()
         )
-
+        
         dates.extend(
             batch[
                 "target_date"
@@ -295,7 +289,7 @@ def extract_features(
             dim=0,
         ),
         np.concatenate(
-            target_parts,
+            history_parts,
             axis=0,
         ),
         pd.DatetimeIndex(
@@ -1212,7 +1206,7 @@ def main() -> None:
 
     (
         train_features,
-        train_target_raw,
+        train_history_raw,
         train_dates,
     ) = extract_features(
         encoder,
@@ -1225,7 +1219,7 @@ def main() -> None:
 
     (
         val_features,
-        val_target_raw,
+        val_history_raw,
         val_dates,
     ) = extract_features(
         encoder,
@@ -1284,15 +1278,23 @@ def main() -> None:
             "Expected exactly two quantiles"
         )
 
+    recent_days = int(
+        regime_cfg[
+            "recent_days"
+        ]
+    )
+
     train_scores = (
-        cross_sectional_rms(
-            train_target_raw
+        trailing_cross_sectional_rms(
+            train_history_raw,
+            recent_days=recent_days,
         )
     )
 
     val_scores = (
-        cross_sectional_rms(
-            val_target_raw
+        trailing_cross_sectional_rms(
+            val_history_raw,
+            recent_days=recent_days,
         )
     )
 
@@ -1539,8 +1541,9 @@ def main() -> None:
 
     thresholds_payload = {
         "score": (
-            "cross_sectional_rms"
+            "trailing_cross_sectional_rms"
         ),
+        "recent_days": recent_days,
         "quantiles": list(
             quantiles
         ),

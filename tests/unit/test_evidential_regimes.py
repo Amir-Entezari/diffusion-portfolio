@@ -4,6 +4,7 @@ from diffusion_portfolio.evaluation.regimes import (
     assign_regime_labels,
     cross_sectional_rms,
     fit_regime_thresholds,
+    trailing_cross_sectional_rms,
 )
 
 
@@ -81,3 +82,27 @@ def test_thresholds_are_fitted_from_scores():
     assert low < high
     assert scores.min() < low
     assert high < scores.max()
+    
+    
+    
+def test_trailing_cross_sectional_rms():
+    history = np.array(
+        [
+            [
+                [1.0, 1.0],
+                [1.0, 1.0],
+                [2.0, 2.0],
+                [2.0, 2.0],
+            ]
+        ]
+    )
+
+    score = trailing_cross_sectional_rms(
+        history,
+        recent_days=2,
+    )
+
+    assert np.isclose(
+        score[0],
+        2.0,
+    )
