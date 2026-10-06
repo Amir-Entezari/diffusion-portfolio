@@ -32,6 +32,7 @@ from diffusion_portfolio.data import (
 )
 from diffusion_portfolio.evaluation.regimes import (
     assign_regime_labels,
+    cross_sectional_rms,
     fit_regime_thresholds,
     trailing_cross_sectional_rms,
 )
@@ -64,7 +65,14 @@ def parse_args() -> argparse.Namespace:
         "--output-dir",
         default="/kaggle/working/phase0_evidential",
     )
-
+    parser.add_argument(
+        "--regime-target",
+        choices=[
+            "next_day",
+            "current",
+        ],
+        default="current",
+    )
     parser.add_argument(
         "--device",
         choices=[
@@ -222,7 +230,6 @@ def prepare_datasets(
         test_end=cfg.data.sample_end,
     )
 
-
 @torch.no_grad()
 def extract_features(
     encoder: nn.Module,
@@ -232,6 +239,7 @@ def extract_features(
     device: torch.device,
 ) -> tuple[
     torch.Tensor,
+    np.ndarray,
     np.ndarray,
     pd.DatetimeIndex,
 ]:
@@ -244,6 +252,7 @@ def extract_features(
 
     feature_parts = []
     history_parts = []
+    target_parts = []
     dates = []
 
     encoder.eval()
@@ -276,7 +285,27 @@ def extract_features(
         history_parts.append(
             history_raw.numpy()
         )
-        
+
+        target_raw = batch[
+            "target_raw"
+        ]
+
+        if (
+            target_raw.ndim != 3
+            or target_raw.shape[1] != 1
+        ):
+            raise RuntimeError(
+                "Phase 0B expects horizon=1"
+            )
+
+        target_parts.append(
+            target_raw[
+                :,
+                0,
+                :,
+            ].numpy()
+        )
+
         dates.extend(
             batch[
                 "target_date"
@@ -290,6 +319,10 @@ def extract_features(
         ),
         np.concatenate(
             history_parts,
+            axis=0,
+        ),
+        np.concatenate(
+            target_parts,
             axis=0,
         ),
         pd.DatetimeIndex(
@@ -1207,6 +1240,7 @@ def main() -> None:
     (
         train_features,
         train_history_raw,
+        train_target_raw,
         train_dates,
     ) = extract_features(
         encoder,
@@ -1220,6 +1254,7 @@ def main() -> None:
     (
         val_features,
         val_history_raw,
+        val_target_raw,
         val_dates,
     ) = extract_features(
         encoder,
@@ -1278,24 +1313,58 @@ def main() -> None:
             "Expected exactly two quantiles"
         )
 
-    recent_days = int(
-        regime_cfg[
-            "recent_days"
-        ]
+        recent_days = None
+
+    if args.regime_target == "next_day":
+        score_name = (
+            "cross_sectional_rms"
+        )
+
+        train_scores = (
+            cross_sectional_rms(
+                train_target_raw
+            )
+        )
+
+        val_scores = (
+            cross_sectional_rms(
+                val_target_raw
+            )
+        )
+
+    else:
+        score_name = (
+            "trailing_cross_sectional_rms"
+        )
+
+        recent_days = int(
+            regime_cfg[
+                "recent_days"
+            ]
+        )
+
+        train_scores = (
+            trailing_cross_sectional_rms(
+                train_history_raw,
+                recent_days=recent_days,
+            )
+        )
+
+        val_scores = (
+            trailing_cross_sectional_rms(
+                val_history_raw,
+                recent_days=recent_days,
+            )
+        )
+
+    print(
+        "Regime target:",
+        args.regime_target,
     )
 
-    train_scores = (
-        trailing_cross_sectional_rms(
-            train_history_raw,
-            recent_days=recent_days,
-        )
-    )
-
-    val_scores = (
-        trailing_cross_sectional_rms(
-            val_history_raw,
-            recent_days=recent_days,
-        )
+    print(
+        "Regime score:",
+        score_name,
     )
 
     thresholds = (
@@ -1540,10 +1609,10 @@ def main() -> None:
     )
 
     thresholds_payload = {
-        "score": (
-            "trailing_cross_sectional_rms"
+        "regime_target": (
+            args.regime_target
         ),
-        "recent_days": recent_days,
+        "score": score_name,
         "quantiles": list(
             quantiles
         ),
@@ -1568,7 +1637,10 @@ def main() -> None:
             )
         ),
     }
-
+    if recent_days is not None:
+        thresholds_payload[
+            "recent_days"
+        ] = recent_days
     with (
         output_dir
         / "regime_thresholds.json"
