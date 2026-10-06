@@ -195,6 +195,8 @@ def build_cde_model(
 
 def prepare_datasets(
     cfg,
+    *,
+    standardizer_path: str | Path | None = None,
 ):
     assets = slice_return_table(
         load_kf12_daily(),
@@ -211,10 +213,32 @@ def prepare_datasets(
         risk_free,
     )
 
-    scaler = TrainStandardizer.fit(
-        excess,
-        train_end=cfg.data.train_end,
-    )
+    if standardizer_path is None:
+        scaler = TrainStandardizer.fit(
+            excess,
+            train_end=cfg.data.train_end,
+        )
+
+    else:
+        scaler_file = np.load(
+            standardizer_path,
+            allow_pickle=False,
+        )
+
+        scaler = TrainStandardizer(
+            mean=scaler_file[
+                "mean"
+            ],
+            std=scaler_file[
+                "std"
+            ],
+            columns=tuple(
+                str(column)
+                for column in scaler_file[
+                    "columns"
+                ]
+            ),
+        )
 
     scaled = scaler.transform(
         excess

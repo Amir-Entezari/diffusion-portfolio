@@ -128,7 +128,11 @@ def main() -> None:
     )
 
     datasets = prepare_datasets(
-        cfg
+        cfg,
+        standardizer_path=(
+            cde_run_dir
+            / "standardizer.npz"
+        ),
     )
 
     dates = (

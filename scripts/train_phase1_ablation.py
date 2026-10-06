@@ -232,7 +232,11 @@ def main() -> None:
     )
 
     datasets = prepare_datasets(
-        cfg
+        cfg,
+        standardizer_path=(
+            cde_run_dir
+            / "standardizer.npz"
+        ),
     )
 
     train_dates = (
@@ -377,6 +381,14 @@ def main() -> None:
     model = PrecomputedConditionDiffusion(
         diffusion,
         extra_dim=extra_dim,
+    )
+
+    # Variant-specific module construction consumes RNG.
+    # Reset it so every fresh ablation run receives the
+    # same diffusion corruption stream.
+    set_global_seed(
+        cfg.seed,
+        deterministic=False,
     )
 
     parameter_count = sum(

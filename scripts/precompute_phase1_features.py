@@ -112,17 +112,14 @@ def extract_split(
             device
         )
 
+        condition = encoder(
+            history
+        )
+
         trajectory = (
             encoder.encode_trajectory(
                 history
             )
-        )
-
-        condition = encoder.readout(
-            trajectory[
-                :,
-                -1,
-            ]
         )
 
         geometry_features = (
@@ -277,7 +274,11 @@ def main() -> None:
     )
 
     datasets = prepare_datasets(
-        cfg
+        cfg,
+        standardizer_path=(
+            cde_run_dir
+            / "standardizer.npz"
+        ),
     )
 
     print(
