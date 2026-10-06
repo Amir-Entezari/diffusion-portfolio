@@ -241,3 +241,58 @@ def trajectory_persistence_features(
         dtype=trajectory.dtype,
         device=trajectory.device,
     )
+    
+
+def trajectory_geometry_features(
+    trajectory: Tensor,
+) -> Tensor:
+    """Simple non-topological controls from a latent trajectory."""
+
+    if trajectory.ndim != 3:
+        raise ValueError(
+            "trajectory must have shape "
+            "[batch, time, hidden_dim]"
+        )
+
+    if trajectory.shape[1] < 2:
+        raise ValueError(
+            "trajectory must contain at least "
+            "two time points"
+        )
+
+    steps = torch.linalg.vector_norm(
+        torch.diff(
+            trajectory,
+            dim=1,
+        ),
+        dim=2,
+    )
+
+    centroid = trajectory.mean(
+        dim=1,
+        keepdim=True,
+    )
+
+    radius = torch.linalg.vector_norm(
+        trajectory - centroid,
+        dim=2,
+    )
+
+    return torch.stack(
+        [
+            steps.mean(dim=1),
+            steps.std(
+                dim=1,
+                unbiased=False,
+            ),
+            steps.max(dim=1).values,
+            steps.sum(dim=1),
+            radius.mean(dim=1),
+            radius.std(
+                dim=1,
+                unbiased=False,
+            ),
+            radius.max(dim=1).values,
+        ],
+        dim=1,
+    )

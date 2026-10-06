@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from diffusion_portfolio.models.topology import (
+    trajectory_geometry_features,
     trajectory_persistence_features,
 )
 
@@ -69,3 +70,28 @@ def test_wrong_trajectory_shape_is_rejected():
         trajectory_persistence_features(
             trajectory
         )
+        
+        
+def test_geometry_features_have_expected_shape():
+    torch.manual_seed(
+        42
+    )
+
+    trajectory = torch.randn(
+        3,
+        10,
+        8,
+    )
+
+    features = trajectory_geometry_features(
+        trajectory
+    )
+
+    assert features.shape == (
+        3,
+        7,
+    )
+
+    assert torch.isfinite(
+        features
+    ).all()
