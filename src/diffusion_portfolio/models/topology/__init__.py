@@ -1,1 +1,9 @@
-"""Experimental TDA building blocks; not active in the MVP pipeline yet."""
+"""Topological data-analysis components."""
+
+from diffusion_portfolio.models.topology.features import (
+    trajectory_persistence_features,
+)
+
+__all__ = [
+    "trajectory_persistence_features",
+]
