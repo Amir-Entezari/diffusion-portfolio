@@ -316,7 +316,7 @@ def fit_diffusion(
         if resume_path.exists():
             saved = torch.load(
                 resume_path,
-                map_location=device,
+                map_location="cpu",
                 weights_only=False,
             )
 
