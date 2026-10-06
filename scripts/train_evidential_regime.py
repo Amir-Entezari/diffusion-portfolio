@@ -1313,7 +1313,7 @@ def main() -> None:
             "Expected exactly two quantiles"
         )
 
-        recent_days = None
+    recent_days = None
 
     if args.regime_target == "next_day":
         score_name = (
