@@ -653,59 +653,28 @@ class ConditionalDiffusionModel(nn.Module):
         )
 
     @torch.no_grad()
-    def sample(
+    def sample_from_condition(
         self,
-        history: Tensor,
+        condition: Tensor,
         *,
         n_scenarios: int,
         initial_noise: Tensor | None = None,
     ) -> Tensor:
-        """Generate conditional next-day return scenarios.
+        """Generate scenarios from a precomputed condition."""
 
-        Parameters
-        ----------
-        history:
-            Standardized historical excess returns,
-            shape [batch, lookback, assets].
-
-        n_scenarios:
-            Number of independent scenarios per historical window.
-
-        initial_noise:
-            Optional x_T initialization with shape
-            [batch, n_scenarios, assets].
-
-        Returns
-        -------
-        Tensor
-            Generated standardized next-day returns with shape:
-
-                [batch, n_scenarios, assets]
-
-        Notes
-        -----
-        The returned samples remain in MODEL SPACE.
-
-        For our current MVP this means standardized excess returns.
-        They must be inverse-transformed before financial evaluation.
-        """
-
-        if history.ndim != 3:
+        if condition.ndim != 2:
             raise ValueError(
-                "history must have shape "
-                "[batch, lookback, assets]"
+                "condition must have shape "
+                "[batch, condition_dim]"
             )
 
-        if history.shape[1] != self.lookback:
+        if (
+            condition.shape[1]
+            != self.condition_dim
+        ):
             raise ValueError(
-                "history lookback dimension "
-                "does not match model"
-            )
-
-        if history.shape[2] != self.n_assets:
-            raise ValueError(
-                "history asset dimension "
-                "does not match model"
+                "condition dimension does not "
+                "match model"
             )
 
         if n_scenarios <= 0:
@@ -713,16 +682,8 @@ class ConditionalDiffusionModel(nn.Module):
                 "n_scenarios must be positive"
             )
 
-        batch_size = history.shape[0]
+        batch_size = condition.shape[0]
 
-        # Encode and route each historical window once.
-        condition = (
-            self._encode_condition(
-                history
-            )
-        )
-
-        # Each history gets M independently denoised scenarios.
         repeated_condition = (
             condition.repeat_interleave(
                 n_scenarios,
@@ -737,8 +698,8 @@ class ConditionalDiffusionModel(nn.Module):
                     n_scenarios,
                     self.n_assets,
                 ),
-                device=history.device,
-                dtype=history.dtype,
+                device=condition.device,
+                dtype=condition.dtype,
             )
 
         else:
@@ -757,8 +718,8 @@ class ConditionalDiffusionModel(nn.Module):
                 )
 
             x = initial_noise.to(
-                device=history.device,
-                dtype=history.dtype,
+                device=condition.device,
+                dtype=condition.dtype,
             )
 
         x = x.reshape(
@@ -778,7 +739,7 @@ class ConditionalDiffusionModel(nn.Module):
                     * n_scenarios,
                 ),
                 step,
-                device=history.device,
+                device=condition.device,
                 dtype=torch.long,
             )
 
@@ -803,24 +764,79 @@ class ConditionalDiffusionModel(nn.Module):
             n_scenarios,
             self.n_assets,
         )
-    def training_loss(
+
+    @torch.no_grad()
+    def sample(
         self,
         history: Tensor,
+        *,
+        n_scenarios: int,
+        initial_noise: Tensor | None = None,
+    ) -> Tensor:
+        """Generate scenarios conditioned on historical returns."""
+
+        if history.ndim != 3:
+            raise ValueError(
+                "history must have shape "
+                "[batch, lookback, assets]"
+            )
+
+        if (
+            history.shape[1]
+            != self.lookback
+        ):
+            raise ValueError(
+                "history lookback dimension "
+                "does not match model"
+            )
+
+        if (
+            history.shape[2]
+            != self.n_assets
+        ):
+            raise ValueError(
+                "history asset dimension "
+                "does not match model"
+            )
+
+        condition = self._encode_condition(
+            history
+        )
+
+        return self.sample_from_condition(
+            condition,
+            n_scenarios=n_scenarios,
+            initial_noise=initial_noise,
+        )
+        
+        
+    def training_loss_from_condition(
+        self,
+        condition: Tensor,
         target: Tensor,
         *,
         noise: Tensor | None = None,
         timesteps: Tensor | None = None,
     ) -> DiffusionTrainingOutput:
-        """Calculate the standard DDPM epsilon-prediction objective."""
+        """Calculate diffusion loss from a precomputed condition."""
 
         x_0 = self._prepare_target(
             target
         )
 
-        if history.shape[0] != x_0.shape[0]:
+        if condition.shape != (
+            x_0.shape[0],
+            self.condition_dim,
+        ):
             raise ValueError(
-                "history and target batch sizes differ"
+                "condition must have shape "
+                "[batch, condition_dim]"
             )
+
+        condition = condition.to(
+            device=x_0.device,
+            dtype=x_0.dtype,
+        )
 
         batch_size = x_0.shape[0]
 
@@ -879,12 +895,10 @@ class ConditionalDiffusionModel(nn.Module):
             noise,
         )
 
-        prediction = (
-            self.predict_model_output(
-                x_t,
-                timesteps,
-                history,
-            )
+        prediction = self.score_network(
+            x_t,
+            timesteps,
+            condition,
         )
 
         training_target = (
@@ -903,9 +917,36 @@ class ConditionalDiffusionModel(nn.Module):
         return DiffusionTrainingOutput(
             loss=loss,
             prediction=prediction,
-            training_target=(
-                training_target
-            ),
+            training_target=training_target,
             noisy_target=x_t,
+            timesteps=timesteps,
+        )
+
+    def training_loss(
+        self,
+        history: Tensor,
+        target: Tensor,
+        *,
+        noise: Tensor | None = None,
+        timesteps: Tensor | None = None,
+    ) -> DiffusionTrainingOutput:
+        """Calculate diffusion loss from historical returns."""
+
+        if (
+            history.shape[0]
+            != target.shape[0]
+        ):
+            raise ValueError(
+                "history and target batch sizes differ"
+            )
+
+        condition = self._encode_condition(
+            history
+        )
+
+        return self.training_loss_from_condition(
+            condition,
+            target,
+            noise=noise,
             timesteps=timesteps,
         )

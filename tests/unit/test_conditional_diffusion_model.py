@@ -766,3 +766,117 @@ def test_default_diffusion_still_uses_mlp_history_encoder():
         model.history_encoder_type
         == "mlp"
     )
+    
+def test_condition_training_matches_history_training():
+    torch.manual_seed(
+        42
+    )
+
+    model = make_model()
+
+    history = torch.randn(
+        4,
+        60,
+        12,
+    )
+
+    target = torch.randn(
+        4,
+        1,
+        12,
+    )
+
+    noise = torch.randn(
+        4,
+        12,
+    )
+
+    timesteps = torch.tensor(
+        [
+            1,
+            4,
+            8,
+            12,
+        ]
+    )
+
+    condition = model._encode_condition(
+        history
+    )
+
+    history_output = model.training_loss(
+        history,
+        target,
+        noise=noise,
+        timesteps=timesteps,
+    )
+
+    condition_output = (
+        model.training_loss_from_condition(
+            condition,
+            target,
+            noise=noise,
+            timesteps=timesteps,
+        )
+    )
+
+    torch.testing.assert_close(
+        history_output.loss,
+        condition_output.loss,
+    )
+
+    torch.testing.assert_close(
+        history_output.prediction,
+        condition_output.prediction,
+    )
+
+
+def test_condition_sampling_matches_history_sampling():
+    torch.manual_seed(
+        42
+    )
+
+    model = make_model()
+
+    history = torch.randn(
+        2,
+        60,
+        12,
+    )
+
+    condition = model._encode_condition(
+        history
+    )
+
+    initial_noise = torch.randn(
+        2,
+        3,
+        12,
+    )
+
+    torch.manual_seed(
+        123
+    )
+
+    history_samples = model.sample(
+        history,
+        n_scenarios=3,
+        initial_noise=initial_noise,
+    )
+
+    torch.manual_seed(
+        123
+    )
+
+    condition_samples = (
+        model.sample_from_condition(
+            condition,
+            n_scenarios=3,
+            initial_noise=initial_noise,
+        )
+    )
+
+    torch.testing.assert_close(
+        history_samples,
+        condition_samples,
+    )
