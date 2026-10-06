@@ -128,6 +128,19 @@ def main() -> None:
         exist_ok=True,
     )
 
+    if (
+        args.resume
+        and (
+            output_dir
+            / "summary.json"
+        ).exists()
+    ):
+        print(
+            "Training already complete:",
+            output_dir,
+        )
+        return
+
     cfg = load_config(
         config_path
     )

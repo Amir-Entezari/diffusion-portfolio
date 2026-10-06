@@ -229,6 +229,7 @@ def ensure_run(
                 str(run_dir),
                 "--device",
                 device,
+                "--resume",
             ],
             cwd=repo_root,
         )
