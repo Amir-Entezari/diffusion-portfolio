@@ -25,7 +25,15 @@ from diffusion_portfolio.evaluation.frictions import (
     FrictionBacktestResult,
     evaluate_rebalanced_portfolio,
 )
-
+from diffusion_portfolio.evaluation.tails import (
+    DEFAULT_TAIL_LEVELS,
+    TailForecastMetrics,
+    brier_score,
+    evaluate_tail_forecast,
+    fit_stress_threshold,
+    quantile_tail_metrics,
+    stress_event_probabilities,
+)
 __all__ = [
     "BacktestResult",
     "PortfolioMetrics",
@@ -44,4 +52,11 @@ __all__ = [
     "prediction_interval_calibration",
     "FrictionBacktestResult",
     "evaluate_rebalanced_portfolio",
+    "DEFAULT_TAIL_LEVELS",
+    "TailForecastMetrics",
+    "brier_score",
+    "evaluate_tail_forecast",
+    "fit_stress_threshold",
+    "quantile_tail_metrics",
+    "stress_event_probabilities",
 ]
