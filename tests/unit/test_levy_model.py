@@ -77,7 +77,7 @@ def test_alpha_two_has_same_parameter_structure_as_gaussian():
     )
 
 
-def test_alpha_two_training_loss_matches_gaussian_epsilon():
+def test_alpha_two_forward_and_prediction_match_gaussian_epsilon():
     torch.manual_seed(
         42
     )
@@ -166,12 +166,6 @@ def test_alpha_two_training_loss_matches_gaussian_epsilon():
         rtol=1e-6,
     )
 
-    torch.testing.assert_close(
-        levy_output.loss,
-        gaussian_output.loss,
-        atol=1e-7,
-        rtol=1e-6,
-    )
 
 
 def test_heavy_tail_training_loss_is_finite():
@@ -385,3 +379,76 @@ def test_heavy_tail_sampling_is_finite():
     assert torch.isfinite(
         samples
     ).all()
+    
+    
+    
+def test_levy_loss_is_mean_per_sample_rmse():
+    torch.manual_seed(
+        321
+    )
+
+    model = make_levy_model(
+        alpha=1.7
+    )
+
+    history = torch.randn(
+        7,
+        5,
+        4,
+    )
+
+    target = torch.randn(
+        7,
+        1,
+        4,
+    )
+
+    timesteps = torch.tensor(
+        [
+            0,
+            1,
+            2,
+            4,
+            6,
+            7,
+            9,
+        ]
+    )
+
+    noise = torch.tensor(
+        [
+            [0.5, -1.0, 2.0, -0.2],
+            [1.5, 0.3, -0.7, 0.9],
+            [-0.4, 0.8, 1.2, -1.3],
+            [2.2, -0.1, 0.5, 0.7],
+            [-1.8, 0.4, -0.3, 1.1],
+            [0.2, 1.7, -1.1, 0.6],
+            [0.9, -0.5, 0.1, -2.0],
+        ],
+        dtype=torch.float32,
+    )
+
+    output = model.training_loss(
+        history,
+        target,
+        noise=noise,
+        timesteps=timesteps,
+    )
+
+    squared_error = torch.square(
+        output.prediction
+        - output.training_target
+    )
+
+    expected = torch.sqrt(
+        squared_error.mean(
+            dim=1
+        )
+    ).mean()
+
+    torch.testing.assert_close(
+        output.loss,
+        expected,
+        atol=1e-7,
+        rtol=1e-6,
+    )

@@ -211,14 +211,30 @@ class ConditionalLevyDiffusionModel(
             )
         )
 
-        # DLPM simple objective:
-        # predict the alpha-stable perturbation itself.
+        # DLPM epsilon target.
+        #
+        # The loss below follows the authors' lploss=2
+        # implementation: per-sample RMSE, then batch mean.
         training_target = noise
 
-        loss = F.mse_loss(
+        squared_error = F.mse_loss(
             prediction,
             training_target,
+            reduction="none",
         )
+
+        per_sample_loss = torch.sqrt(
+            squared_error.mean(
+                dim=tuple(
+                    range(
+                        1,
+                        squared_error.ndim,
+                    )
+                )
+            )
+        )
+
+        loss = per_sample_loss.mean()
 
         return DiffusionTrainingOutput(
             loss=loss,
