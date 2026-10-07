@@ -330,3 +330,65 @@ def sample_isotropic_alpha_stable(
         )
 
     return samples
+
+
+def sample_ddpm_normalized_alpha_stable(
+    *,
+    alpha: float,
+    shape: tuple[int, ...],
+    device: torch.device | str | None = None,
+    dtype: torch.dtype = torch.float32,
+    generator: torch.Generator | None = None,
+) -> Tensor:
+    """Sample DDPM-normalized isotropic alpha-stable noise.
+
+    The raw DLPM convention satisfies
+
+        E exp(i u^T X) = exp(-||u||^alpha)
+
+    and gives
+
+        X ~ N(0, 2 I)
+
+    when alpha=2.
+
+    For a controlled extension of the existing DDPM, rescale by
+
+        2^(-1/alpha)
+
+    so that
+
+        E exp(i u^T X) =
+            exp(-0.5 ||u||^alpha)
+
+    and alpha=2 exactly recovers
+
+        N(0, I).
+    """
+
+    alpha = _validate_alpha(
+        alpha
+    )
+
+    samples = (
+        sample_isotropic_alpha_stable(
+            alpha=alpha,
+            shape=shape,
+            device=device,
+            dtype=dtype,
+            generator=generator,
+        )
+    )
+
+    scale = (
+        2.0
+        ** (
+            -1.0
+            / alpha
+        )
+    )
+
+    return (
+        scale
+        * samples
+    )
