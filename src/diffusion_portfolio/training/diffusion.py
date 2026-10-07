@@ -149,12 +149,20 @@ def evaluate_diffusion_loss(
 
     model.eval()
 
-    generator = torch.Generator(
+    timestep_generator = torch.Generator(
         device="cpu"
     )
 
-    generator.manual_seed(
+    noise_generator = torch.Generator(
+        device="cpu"
+    )
+
+    timestep_generator.manual_seed(
         validation_seed
+    )
+
+    noise_generator.manual_seed(
+        validation_seed + 1
     )
 
     total_loss = 0.0
@@ -172,7 +180,7 @@ def evaluate_diffusion_loss(
             low=0,
             high=model.diffusion_steps,
             size=(batch_size,),
-            generator=generator,
+            generator=timestep_generator,
             device="cpu",
             dtype=torch.long,
         ).to(device)
@@ -188,7 +196,7 @@ def evaluate_diffusion_loss(
                 ),
                 device="cpu",
                 dtype=target.dtype,
-                generator=generator,
+                generator=noise_generator,
             )
 
         else:
@@ -199,7 +207,7 @@ def evaluate_diffusion_loss(
                     batch_size,
                     model.n_assets,
                 ),
-                generator=generator,
+                generator=noise_generator,
                 device="cpu",
                 dtype=target.dtype,
             )
