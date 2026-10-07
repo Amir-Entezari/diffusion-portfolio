@@ -452,3 +452,58 @@ def test_levy_loss_is_mean_per_sample_rmse():
         atol=1e-7,
         rtol=1e-6,
     )
+    
+    
+def test_alpha_two_training_noise_matches_gaussian():
+    gaussian = (
+        make_gaussian_epsilon_model()
+    )
+
+    levy = make_levy_model(
+        alpha=2.0
+    )
+
+    generator_a = (
+        torch.Generator()
+    )
+    generator_a.manual_seed(
+        12345
+    )
+
+    generator_b = (
+        torch.Generator()
+    )
+    generator_b.manual_seed(
+        12345
+    )
+
+    gaussian_noise = (
+        gaussian.sample_training_noise(
+            shape=(
+                16,
+                4,
+            ),
+            device="cpu",
+            dtype=torch.float64,
+            generator=generator_a,
+        )
+    )
+
+    levy_noise = (
+        levy.sample_training_noise(
+            shape=(
+                16,
+                4,
+            ),
+            device="cpu",
+            dtype=torch.float64,
+            generator=generator_b,
+        )
+    )
+
+    torch.testing.assert_close(
+        levy_noise,
+        gaussian_noise,
+        atol=0.0,
+        rtol=0.0,
+    )

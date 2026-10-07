@@ -177,15 +177,36 @@ def evaluate_diffusion_loss(
             dtype=torch.long,
         ).to(device)
 
-        noise = torch.randn(
-            (
-                batch_size,
-                model.n_assets,
-            ),
-            generator=generator,
-            device="cpu",
-            dtype=target.dtype,
-        ).to(device)
+        if hasattr(
+            model,
+            "sample_training_noise",
+        ):
+            noise = model.sample_training_noise(
+                shape=(
+                    batch_size,
+                    model.n_assets,
+                ),
+                device="cpu",
+                dtype=target.dtype,
+                generator=generator,
+            )
+
+        else:
+            # Compatibility for existing wrapper models such as
+            # the frozen-condition Phase-1/2 ablations.
+            noise = torch.randn(
+                (
+                    batch_size,
+                    model.n_assets,
+                ),
+                generator=generator,
+                device="cpu",
+                dtype=target.dtype,
+            )
+
+        noise = noise.to(
+            device
+        )
 
         output = model.training_loss(
             history,

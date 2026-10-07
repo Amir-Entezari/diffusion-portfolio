@@ -369,7 +369,18 @@ def sample_ddpm_normalized_alpha_stable(
     alpha = _validate_alpha(
         alpha
     )
-
+    # Exact Gaussian endpoint.
+    #
+    # Avoid constructing sqrt(2) * G and then multiplying by
+    # 2^(-1/2), which is mathematically identical to G but not
+    # bitwise identical because of floating-point rounding.
+    if alpha == 2.0:
+        return torch.randn(
+            shape,
+            device=device,
+            dtype=dtype,
+            generator=generator,
+        )
     samples = (
         sample_isotropic_alpha_stable(
             alpha=alpha,

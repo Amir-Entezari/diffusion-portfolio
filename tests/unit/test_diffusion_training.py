@@ -12,7 +12,9 @@ from diffusion_portfolio.training import (
     fit_diffusion,
     train_one_epoch,
 )
-
+from diffusion_portfolio.models.levy import (
+    ConditionalLevyDiffusionModel,
+)
 
 def make_model():
     return ConditionalDiffusionModel(
@@ -341,3 +343,51 @@ def test_invalid_epoch_count_is_rejected():
             device="cpu",
             verbose=False,
         )
+        
+        
+        
+def test_levy_validation_loss_is_reproducible():
+    torch.manual_seed(
+        42
+    )
+
+    model = ConditionalLevyDiffusionModel(
+        alpha=1.7,
+        lookback=5,
+        n_assets=4,
+        condition_dim=8,
+        history_hidden_dim=16,
+        diffusion_steps=10,
+        schedule_type="cosine",
+        channels=[
+            8,
+            16,
+        ],
+        time_embed_dim=8,
+        n_res_blocks=1,
+    )
+
+    loader = make_loader()
+
+    loss_a = evaluate_diffusion_loss(
+        model,
+        loader,
+        device=torch.device(
+            "cpu"
+        ),
+        validation_seed=123,
+    )
+
+    loss_b = evaluate_diffusion_loss(
+        model,
+        loader,
+        device=torch.device(
+            "cpu"
+        ),
+        validation_seed=123,
+    )
+
+    assert loss_a == pytest.approx(
+        loss_b,
+        abs=1e-12,
+    )

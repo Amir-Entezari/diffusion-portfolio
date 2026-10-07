@@ -809,6 +809,23 @@ class ConditionalDiffusionModel(nn.Module):
             initial_noise=initial_noise,
         )
         
+    def sample_training_noise(
+        self,
+        *,
+        shape: tuple[int, ...],
+        device: torch.device | str,
+        dtype: torch.dtype,
+        generator: torch.Generator | None = None,
+    ) -> Tensor:
+        """Sample the perturbation used by the training objective."""
+
+        return torch.randn(
+            shape,
+            device=device,
+            dtype=dtype,
+            generator=generator,
+        )
+        
         
     def training_loss_from_condition(
         self,
@@ -874,8 +891,12 @@ class ConditionalDiffusionModel(nn.Module):
                 )
 
         if noise is None:
-            noise = torch.randn_like(
-                x_0
+            noise = self.sample_training_noise(
+                shape=tuple(
+                    x_0.shape
+                ),
+                device=x_0.device,
+                dtype=x_0.dtype,
             )
 
         else:

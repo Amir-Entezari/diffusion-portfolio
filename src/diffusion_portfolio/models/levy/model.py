@@ -99,6 +99,24 @@ class ConditionalLevyDiffusionModel(
             )
         )
 
+    def sample_training_noise(
+        self,
+        *,
+        shape: tuple[int, ...],
+        device: torch.device | str,
+        dtype: torch.dtype,
+        generator: torch.Generator | None = None,
+    ) -> Tensor:
+        """Sample DDPM-normalized alpha-stable training corruption."""
+
+        return sample_ddpm_normalized_alpha_stable(
+            alpha=self.alpha,
+            shape=shape,
+            device=device,
+            dtype=dtype,
+            generator=generator,
+        )
+
     def training_loss_from_condition(
         self,
         condition: Tensor,
@@ -170,15 +188,12 @@ class ConditionalLevyDiffusionModel(
                 )
 
         if noise is None:
-            noise = (
-                sample_ddpm_normalized_alpha_stable(
-                    alpha=self.alpha,
-                    shape=tuple(
-                        x_0.shape
-                    ),
-                    device=x_0.device,
-                    dtype=x_0.dtype,
-                )
+            noise = self.sample_training_noise(
+                shape=tuple(
+                    x_0.shape
+                ),
+                device=x_0.device,
+                dtype=x_0.dtype,
             )
 
         else:
