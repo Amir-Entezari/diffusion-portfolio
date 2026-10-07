@@ -392,3 +392,77 @@ def sample_ddpm_normalized_alpha_stable(
         scale
         * samples
     )
+    
+    
+def sample_ddpm_normalized_positive_stable_mixer(
+    *,
+    alpha: float,
+    shape: tuple[int, ...],
+    device: torch.device | str | None = None,
+    dtype: torch.dtype = torch.float32,
+    generator: torch.Generator | None = None,
+) -> Tensor:
+    """Sample the mixer for DDPM-normalized alpha-stable noise.
+
+    The raw DLPM Gaussian-mixture representation is
+
+        X = sqrt(A) G
+
+    with characteristic function
+
+        exp(-||u||^alpha).
+
+    Our DDPM-normalized stable law rescales X by
+
+        2^(-1/alpha).
+
+    Therefore its Gaussian variance mixer is
+
+        A_normalized =
+            2^(-2/alpha) A.
+
+    At alpha=2 this becomes exactly A_normalized = 1.
+    """
+
+    alpha = _validate_alpha(
+        alpha
+    )
+
+    mixer = sample_positive_stable_mixer(
+        alpha=alpha,
+        shape=shape,
+        device=device,
+        dtype=dtype,
+        generator=generator,
+    )
+
+    scale = (
+        2.0
+        ** (
+            -2.0
+            / alpha
+        )
+    )
+
+    normalized = (
+        scale
+        * mixer
+    )
+
+    if not torch.isfinite(
+        normalized
+    ).all():
+        raise RuntimeError(
+            "normalized stable mixer "
+            "contains non-finite values"
+        )
+
+    if torch.any(
+        normalized <= 0
+    ):
+        raise RuntimeError(
+            "normalized stable mixer "
+            "must be positive"
+        )
+
+    return normalized

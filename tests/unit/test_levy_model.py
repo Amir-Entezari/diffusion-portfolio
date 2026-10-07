@@ -218,9 +218,98 @@ def test_heavy_tail_training_loss_is_finite():
     )
 
 
-def test_levy_sampling_is_blocked_until_reverse_is_implemented():
-    model = make_levy_model(
-        alpha=1.7
+def test_alpha_two_reverse_step_matches_gaussian():
+    torch.manual_seed(
+        42
+    )
+
+    gaussian = (
+        make_gaussian_epsilon_model()
+    )
+
+    levy = make_levy_model(
+        alpha=2.0
+    )
+
+    levy.history_encoder.load_state_dict(
+        gaussian.history_encoder.state_dict()
+    )
+
+    levy.score_network.load_state_dict(
+        gaussian.score_network.state_dict()
+    )
+
+    x_t = torch.randn(
+        6,
+        4,
+    )
+
+    condition = torch.randn(
+        6,
+        8,
+    )
+
+    timesteps = torch.tensor(
+        [
+            0,
+            1,
+            3,
+            5,
+            7,
+            9,
+        ]
+    )
+
+    noise = torch.randn(
+        6,
+        4,
+    )
+
+    gaussian_previous = (
+        gaussian.reverse_step(
+            x_t,
+            timesteps,
+            condition,
+            noise=noise,
+        )
+    )
+
+    levy_previous = (
+        levy.reverse_step(
+            x_t,
+            timesteps,
+            condition,
+            noise=noise,
+        )
+    )
+
+    torch.testing.assert_close(
+        levy_previous,
+        gaussian_previous,
+        atol=1e-7,
+        rtol=1e-6,
+    )
+
+
+def test_alpha_two_full_sampling_matches_gaussian():
+    torch.manual_seed(
+        123
+    )
+
+    gaussian = (
+        make_gaussian_epsilon_model()
+    )
+
+    levy = make_levy_model(
+        alpha=2.0
+    )
+
+    levy.history_encoder.load_state_dict(
+        gaussian.history_encoder.state_dict()
+    )
+
+    levy.score_network.load_state_dict(
+        gaussian.score_network.state_dict()
     )
 
     condition = torch.randn(
@@ -228,11 +317,71 @@ def test_levy_sampling_is_blocked_until_reverse_is_implemented():
         8,
     )
 
-    with pytest.raises(
-        NotImplementedError,
-        match="reverse sampling",
-    ):
-        model.sample_from_condition(
+    initial = torch.randn(
+        2,
+        4,
+        4,
+    )
+
+    torch.manual_seed(
+        999
+    )
+
+    gaussian_samples = (
+        gaussian.sample_from_condition(
             condition,
             n_scenarios=4,
+            initial_noise=initial,
         )
+    )
+
+    torch.manual_seed(
+        999
+    )
+
+    levy_samples = (
+        levy.sample_from_condition(
+            condition,
+            n_scenarios=4,
+            initial_noise=initial,
+        )
+    )
+
+    torch.testing.assert_close(
+        levy_samples,
+        gaussian_samples,
+        atol=1e-7,
+        rtol=1e-6,
+    )
+
+
+def test_heavy_tail_sampling_is_finite():
+    torch.manual_seed(
+        12345
+    )
+
+    model = make_levy_model(
+        alpha=1.7
+    )
+
+    condition = torch.randn(
+        3,
+        8,
+    )
+
+    samples = (
+        model.sample_from_condition(
+            condition,
+            n_scenarios=5,
+        )
+    )
+
+    assert samples.shape == (
+        3,
+        5,
+        4,
+    )
+
+    assert torch.isfinite(
+        samples
+    ).all()

@@ -201,6 +201,16 @@ class LevyNoiseSchedule(nn.Module):
             bar_sigmas,
         )
 
+
+    @property
+    def effective_betas(
+        self,
+    ) -> Tensor:
+        """Compatibility with the Gaussian DDPM interface."""
+
+        return self.betas
+
+
     def get_coefficients(
         self,
         timesteps: Tensor,
@@ -231,26 +241,43 @@ class LevyNoiseSchedule(nn.Module):
                 "the diffusion schedule"
             )
 
+        gamma = self.gammas[
+            timesteps
+        ]
+
+        bar_gamma = self.bar_gammas[
+            timesteps
+        ]
+
+        sigma = self.sigmas[
+            timesteps
+        ]
+
+        bar_sigma = self.bar_sigmas[
+            timesteps
+        ]
+
+        beta = self.betas[
+            timesteps
+        ]
+
         return {
-            "gamma": self.gammas[
-                timesteps
-            ],
-            "bar_gamma": (
-                self.bar_gammas[
-                    timesteps
-                ]
+            "gamma": gamma,
+            "bar_gamma": bar_gamma,
+            "sigma": sigma,
+            "bar_sigma": bar_sigma,
+            "beta": beta,
+
+            # Compatibility aliases.
+            #
+            # They are exactly the ordinary Gaussian DDPM coefficients
+            # when alpha == 2.
+            "sqrt_alpha_cumprod": (
+                bar_gamma
             ),
-            "sigma": self.sigmas[
-                timesteps
-            ],
-            "bar_sigma": (
-                self.bar_sigmas[
-                    timesteps
-                ]
+            "sqrt_one_minus_alpha_cumprod": (
+                bar_sigma
             ),
-            "beta": self.betas[
-                timesteps
-            ],
         }
 
     def q_sample(

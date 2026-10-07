@@ -6,6 +6,7 @@ import torch
 from diffusion_portfolio.models.levy import (
     sample_isotropic_alpha_stable,
     sample_positive_stable_mixer,
+    sample_ddpm_normalized_positive_stable_mixer,
 )
 
 
@@ -209,3 +210,25 @@ def test_invalid_alpha_is_rejected(
                 12,
             ),
         )
+
+
+def test_ddpm_normalized_alpha_two_mixer_is_exactly_one():
+    mixer = (
+        sample_ddpm_normalized_positive_stable_mixer(
+            alpha=2.0,
+            shape=(
+                32,
+                1,
+            ),
+            dtype=torch.float64,
+        )
+    )
+
+    torch.testing.assert_close(
+        mixer,
+        torch.ones_like(
+            mixer
+        ),
+        atol=0.0,
+        rtol=0.0,
+    )
