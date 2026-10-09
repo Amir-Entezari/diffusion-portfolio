@@ -9,10 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 
-from diffusion_portfolio.models.diffusion.conditioning import (
-    CDEHistoryEncoder,
-    HistoryEncoder,
-)
+from diffusion_portfolio.models.encoders.mlp import HistoryEncoder
 from diffusion_portfolio.models.diffusion.schedule import (
     NoiseSchedule,
 )
@@ -117,6 +114,8 @@ class ConditionalDiffusionModel(nn.Module):
             )
 
         elif history_encoder_type == "cde":
+            from diffusion_portfolio.models.encoders.cde import CDEHistoryEncoder
+
             self.history_encoder = (
                 CDEHistoryEncoder(
                     lookback=lookback,
@@ -148,7 +147,7 @@ class ConditionalDiffusionModel(nn.Module):
                 "history_encoder_type must be "
                 "'mlp' or 'cde'"
             )
-        # Optional Phase-0B routing layer.
+        # Optional residual routing layer.
         #
         # Identity preserves all existing baseline behavior and
         # introduces no checkpoint parameters.

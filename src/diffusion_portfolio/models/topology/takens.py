@@ -14,7 +14,7 @@ where:
 
 Takens' Theorem guarantees that Y(t) is diffeomorphic to the
 original attractor when m and τ are chosen correctly, preserving
-the topological structure that Phase 1 will analyse.
+the topological structure that topology will analyse.
 """
 
 from __future__ import annotations

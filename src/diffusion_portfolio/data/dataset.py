@@ -18,7 +18,7 @@ from torch.utils.data import (
     SequentialSampler,
 )
 
-from diffusion_portfolio.data.ken_french import ReturnTable
+from diffusion_portfolio.data.core import ReturnTable
 from diffusion_portfolio.data.splits import (
     WindowSplits,
     split_windows_by_date,

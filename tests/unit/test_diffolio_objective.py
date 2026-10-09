@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 
-from diffusion_portfolio.models.diffolio import (
+from diffusion_portfolio.baselines.diffolio import (
     DiffolioObjective,
 )
 

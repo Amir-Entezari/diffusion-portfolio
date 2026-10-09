@@ -12,7 +12,7 @@ from diffusion_portfolio.training import (
     fit_diffusion,
     train_one_epoch,
 )
-from diffusion_portfolio.models.levy import (
+from diffusion_portfolio.models.diffusion.levy import (
     ConditionalLevyDiffusionModel,
 )
 

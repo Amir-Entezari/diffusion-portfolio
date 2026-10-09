@@ -7,7 +7,7 @@ from pathlib import Path
 import torch
 
 from diffusion_portfolio.config import load_config
-from diffusion_portfolio.data.synthetic import SyntheticConfig, SyntheticJumpDiffusionGenerator
+from diffusion_portfolio.data.sources.synthetic import SyntheticConfig, SyntheticJumpDiffusionGenerator
 from diffusion_portfolio.models.diffusion import NoiseSchedule, ScoreNetwork
 from diffusion_portfolio.utils.seed import set_global_seed
 
@@ -20,11 +20,11 @@ def main() -> None:
     cfg = load_config(Path(args.config))
     set_global_seed(cfg.seed)
 
-    n_assets = 12  # Stage 2 will derive this from the real dataset contract.
     gen = SyntheticJumpDiffusionGenerator(
-        SyntheticConfig(n_assets=n_assets, n_timesteps=128, seed=cfg.seed)
+        SyntheticConfig(n_timesteps=128, seed=cfg.seed)
     )
     data = gen.generate()
+    n_assets = data["returns"].shape[-1]
     assert data["returns"].shape == (128, n_assets)
 
     batch = torch.tensor(data["returns"][1:9], dtype=torch.float32)

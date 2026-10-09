@@ -5,10 +5,10 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from diffusion_portfolio.data.fama_french import (
+from diffusion_portfolio.data.sources.fama_french import (
     RiskFreeSeries,
 )
-from diffusion_portfolio.data.ken_french import (
+from diffusion_portfolio.data.core import (
     ReturnTable,
 )
 

@@ -7,7 +7,7 @@ from diffusion_portfolio.data import (
     ReturnTable,
     SystematicCovariateTable,
 )
-from diffusion_portfolio.data.diffolio_dataset import (
+from diffusion_portfolio.baselines.diffolio.dataset import (
     make_diffolio_windows,
     split_diffolio_windows_by_date,
 )

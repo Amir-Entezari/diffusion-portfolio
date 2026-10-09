@@ -39,7 +39,7 @@ class DensityMatrixBuilder(nn.Module):
 
     def __init__(
         self,
-        n_assets: int = 12,
+        n_assets: int,
         window_size: int = 60,
         regularization_eps: float = 1e-6,
     ) -> None:

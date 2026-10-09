@@ -1,4 +1,4 @@
-"""Market-stress regime utilities for Phase 0B."""
+"""Market-stress regime utilities for regime probe."""
 
 from __future__ import annotations
 

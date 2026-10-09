@@ -4,7 +4,7 @@ import torch.nn as nn
 from diffusion_portfolio.models.diffusion import (
     ConditionalDiffusionModel,
 )
-from diffusion_portfolio.models.routing import (
+from diffusion_portfolio.models.uncertainty.routing import (
     EvidentialResidualRouter,
     SoftmaxResidualRouter,
 )

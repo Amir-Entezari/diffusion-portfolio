@@ -1,6 +1,6 @@
 import numpy as np
 
-from diffusion_portfolio.data.synthetic import SyntheticConfig, SyntheticJumpDiffusionGenerator
+from diffusion_portfolio.data.sources.synthetic import SyntheticConfig, SyntheticJumpDiffusionGenerator
 
 
 def test_synthetic_generator_shapes_and_finiteness():

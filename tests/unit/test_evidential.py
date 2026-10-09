@@ -1,6 +1,6 @@
 import torch
 
-from diffusion_portfolio.models.evidential import (
+from diffusion_portfolio.models.uncertainty.evidential import (
     EvidentialRegimeHead,
     dirichlet_kl_to_uniform,
     evidential_classification_loss,

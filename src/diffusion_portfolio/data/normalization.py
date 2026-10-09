@@ -16,7 +16,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from diffusion_portfolio.data.ken_french import ReturnTable
+from diffusion_portfolio.data.core import ReturnTable
 
 
 @dataclass(frozen=True)

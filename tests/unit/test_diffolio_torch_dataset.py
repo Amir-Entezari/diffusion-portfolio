@@ -7,11 +7,11 @@ from torch.utils.data import (
     SequentialSampler,
 )
 
-from diffusion_portfolio.data.diffolio_dataset import (
+from diffusion_portfolio.baselines.diffolio.dataset import (
     DiffolioWindows,
     DiffolioWindowSplits,
 )
-from diffusion_portfolio.data.diffolio_torch_dataset import (
+from diffusion_portfolio.baselines.diffolio.loaders import (
     DiffolioDataset,
     collate_diffolio_batch,
     make_diffolio_dataloaders,

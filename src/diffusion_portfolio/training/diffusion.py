@@ -201,7 +201,7 @@ def evaluate_diffusion_loss(
 
         else:
             # Compatibility for existing wrapper models such as
-            # the frozen-condition Phase-1/2 ablations.
+            # the frozen-condition cached-feature ablations.
             noise = torch.randn(
                 (
                     batch_size,

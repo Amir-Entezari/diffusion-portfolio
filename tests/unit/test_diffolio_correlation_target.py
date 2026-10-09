@@ -1,6 +1,6 @@
 import torch
 
-from diffusion_portfolio.models.diffolio.correlation_target import (
+from diffusion_portfolio.baselines.diffolio.correlation_target import (
     compute_training_covariance,
     covariance_to_correlation,
     estimate_shrinkage_correlation,

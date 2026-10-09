@@ -3,7 +3,7 @@ import torch
 from diffusion_portfolio.models.diffusion.schedule import (
     NoiseSchedule,
 )
-from diffusion_portfolio.models.levy import (
+from diffusion_portfolio.models.diffusion.levy import (
     LevyNoiseSchedule,
     sample_ddpm_normalized_alpha_stable,
 )

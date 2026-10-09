@@ -46,7 +46,7 @@ class RiemannianLogMap(nn.Module):
 
     def __init__(
         self,
-        n_assets: int = 12,
+        n_assets: int,
         reference_point: str = "identity",
         ema_decay: float = 0.99,
         flatten_output: bool = True,

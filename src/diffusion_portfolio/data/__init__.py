@@ -1,19 +1,20 @@
 """Data utilities for the diffusion-portfolio research MVP."""
 
-from diffusion_portfolio.data.ken_french import (
+from diffusion_portfolio.data.core import ReturnTable, slice_return_table
+from diffusion_portfolio.data.registry import load_return_table
+
+from diffusion_portfolio.data.sources.kenneth_french import (
     DEFAULT_KF12_CACHE,
     INDUSTRY_COLUMNS,
     KF12_DAILY_URL,
-    ReturnTable,
     dataframe_to_return_table,
     download_kf12_daily,
     load_kf12_daily,
     parse_kf12_daily_text,
     read_kf12_daily_zip,
-    slice_return_table,
 )
 
-from diffusion_portfolio.data.fama_french import (
+from diffusion_portfolio.data.sources.fama_french import (
     DEFAULT_FF3_DAILY_CACHE,
     FACTOR_COLUMNS,
     FF3_DAILY_URL,
@@ -37,12 +38,6 @@ from diffusion_portfolio.data.dataset import (
     make_dataloaders,
 )
 
-from diffusion_portfolio.data.diffolio_dataset import (
-    DiffolioWindows,
-    DiffolioWindowSplits,
-    make_diffolio_windows,
-    split_diffolio_windows_by_date,
-)
 
 from diffusion_portfolio.data.asset_characteristics import (
     CHARACTERISTIC_COLUMNS,
@@ -79,15 +74,8 @@ from diffusion_portfolio.data.systematic_covariates import (
     build_monthly_systematic_covariates,
 )
 
-from diffusion_portfolio.data.diffolio_torch_dataset import (
-    DiffolioDataset,
-    DiffolioDatasetSplits,
-    DiffolioLoaderSplits,
-    collate_diffolio_batch,
-    make_diffolio_datasets,
-    make_diffolio_dataloaders,
-)
 __all__ = [
+    "load_return_table",
     "DEFAULT_KF12_CACHE",
     "INDUSTRY_COLUMNS",
     "KF12_DAILY_URL",
@@ -131,14 +119,4 @@ __all__ = [
     "align_systematic_covariates_to_dates",
     "build_monthly_systematic_covariates",
     "CovariateStandardizer",
-    "DiffolioWindows",
-    "DiffolioWindowSplits",
-    "make_diffolio_windows",
-    "split_diffolio_windows_by_date",
-    "DiffolioDataset",
-    "DiffolioDatasetSplits",
-    "DiffolioLoaderSplits",
-    "collate_diffolio_batch",
-    "make_diffolio_datasets",
-    "make_diffolio_dataloaders",
 ]

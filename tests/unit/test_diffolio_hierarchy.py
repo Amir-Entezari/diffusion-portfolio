@@ -1,6 +1,6 @@
 import torch
 
-from diffusion_portfolio.models.diffolio import (
+from diffusion_portfolio.baselines.diffolio import (
     DiffolioHierarchy,
     SinusoidalDiffusionEmbedding,
 )

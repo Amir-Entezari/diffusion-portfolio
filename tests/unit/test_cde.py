@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from diffusion_portfolio.models.cde import (
+from diffusion_portfolio.models.encoders.cde import (
     CDEVectorField,
     NeuralCDE,
 )

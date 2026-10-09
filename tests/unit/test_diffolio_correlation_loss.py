@@ -1,6 +1,6 @@
 import torch
 
-from diffusion_portfolio.models.diffolio.correlation_loss import (
+from diffusion_portfolio.baselines.diffolio.correlation_loss import (
     correlation_guided_loss,
     diffolio_correlation_regularizer,
     extract_asset_attention,

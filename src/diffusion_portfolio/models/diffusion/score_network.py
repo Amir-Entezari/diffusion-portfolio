@@ -95,7 +95,7 @@ class ScoreNetwork(nn.Module):
 
     def __init__(
         self,
-        data_dim: int = 12,
+        data_dim: int,
         channels: list[int] | None = None,
         time_embed_dim: int = 128,
         condition_dim: int = 256,

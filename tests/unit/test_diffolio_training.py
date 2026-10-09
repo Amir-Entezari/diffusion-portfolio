@@ -3,13 +3,10 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader
 
-from diffusion_portfolio.models.diffolio import (
+from diffusion_portfolio.baselines.diffolio import (
     DiffolioObjective,
 )
-from diffusion_portfolio.training import (
-    diffolio_learning_rate,
-    fit_diffolio_steps,
-)
+from diffusion_portfolio.baselines.diffolio.training import diffolio_learning_rate, fit_diffolio_steps
 
 
 def make_model():

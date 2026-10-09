@@ -3,7 +3,7 @@ import math
 import pytest
 import torch
 
-from diffusion_portfolio.models.levy import (
+from diffusion_portfolio.models.diffusion.levy import (
     sample_isotropic_alpha_stable,
     sample_positive_stable_mixer,
     sample_ddpm_normalized_positive_stable_mixer,

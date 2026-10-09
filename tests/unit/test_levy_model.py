@@ -4,7 +4,7 @@ import torch
 from diffusion_portfolio.models.diffusion import (
     ConditionalDiffusionModel,
 )
-from diffusion_portfolio.models.levy import (
+from diffusion_portfolio.models.diffusion.levy import (
     ConditionalLevyDiffusionModel,
 )
 

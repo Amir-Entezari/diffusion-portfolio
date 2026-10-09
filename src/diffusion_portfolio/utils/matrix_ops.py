@@ -5,8 +5,8 @@ This module provides GPU-accelerated, numerically stable implementations
 of matrix square root, inverse square root, logarithm, and exponential
 operations on Symmetric Positive-Definite (SPD) matrices.  These operations
 are critical for:
-    - Phase 2 (§5.4): Bures metric computation via matrix sqrt.
-    - Phase 2 (§5.4.3): Riemannian logarithmic map via matrix log.
+    - SPD geometry (§5.4): Bures metric computation via matrix sqrt.
+    - SPD geometry (§5.4.3): Riemannian logarithmic map via matrix log.
     - Training stability: Preventing NaN gradients from near-singular
       covariance matrices during Black Swan events.
 

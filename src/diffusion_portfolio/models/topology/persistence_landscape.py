@@ -18,8 +18,8 @@ Key Property:
     making them compatible with standard statistical operations
     (mean, variance, inner products) that persistence diagrams lack.
 
-The vectorised landscapes T_t ∈ ℝ^{K × n_points} are the final output
-of Phase 1, ready for SGW cross-attention fusion with Phase 2.
+The vectorised landscapes T_t ∈ ℝ^{K × n_points} provide fixed-size
+topological features.
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
 import torch
 
-from diffusion_portfolio.models.diffolio import (
+from diffusion_portfolio.baselines.diffolio import (
     DiffolioObjective,
     make_ddim_timesteps,
     sample_diffolio_ddim,
