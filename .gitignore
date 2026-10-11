@@ -13,3 +13,4 @@ data/processed/
 *.pth
 *.ckpt
 *.egg-info/
+proposal.pdf
