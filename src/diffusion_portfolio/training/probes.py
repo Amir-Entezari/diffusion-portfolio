@@ -39,7 +39,8 @@ from diffusion_portfolio.utils.seed import (
 from diffusion_portfolio.utils.device import resolve_device
 from diffusion_portfolio.evaluation.classification import classification_metrics
 
-from diffusion_portfolio.data.preparation import prepare_datasets
+from diffusion_portfolio.data.preparation import prepare_return_data
+from diffusion_portfolio.models.diffusion.build import build_diffusion
 
 def load_probe_config(
     path: Path,
@@ -720,9 +721,10 @@ def run_probe(args) -> None:
     # ---------------------------------------------------------
     # Reconstruct frozen CDE
     # ---------------------------------------------------------
-    diffusion_model = build_cde_model(
-        cde_cfg
-    )
+    # Preserve this experiment's train-only refit convention, while deriving
+    # the asset count from the same prepared panel used for feature extraction.
+    datasets, scaler = prepare_return_data(cde_cfg)
+    diffusion_model = build_diffusion(cde_cfg, n_assets=len(scaler.columns))
 
     diffusion_model.load_state_dict(
         checkpoint[
@@ -759,10 +761,6 @@ def run_probe(args) -> None:
     # ---------------------------------------------------------
     # Reconstruct exact retained CDE data
     # ---------------------------------------------------------
-    datasets = prepare_datasets(
-        cde_cfg
-    )
-
     extraction_batch_size = int(
         probe_cfg[
             "training"

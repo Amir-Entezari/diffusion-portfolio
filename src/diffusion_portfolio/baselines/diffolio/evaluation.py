@@ -126,6 +126,8 @@ def load_artifacts(
 
 
 def build_evaluation_dataset(config, return_scaler, covariate_scaler, split_name):
+    if split_name not in ("val", "test"):
+        raise ValueError("Diffolio evaluation split must be 'val' or 'test'")
     splits, _, _, _ = prepare_diffolio_data(
         config["data"], return_scaler=return_scaler, covariate_scaler=covariate_scaler
     )

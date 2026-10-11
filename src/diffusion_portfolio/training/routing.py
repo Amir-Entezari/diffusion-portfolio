@@ -34,6 +34,8 @@ from diffusion_portfolio.utils.device import resolve_device
 from diffusion_portfolio.evaluation.scenarios import probabilistic_summary
 
 from diffusion_portfolio.data.preparation import prepare_datasets, load_standardizer
+from diffusion_portfolio.models.diffusion.build import build_diffusion
+from diffusion_portfolio.training.diffusion import evaluate_diffusion_loss
 
 def load_yaml(path):
     with Path(path).open(
@@ -655,12 +657,12 @@ def run_router(args):
 
     datasets = prepare_datasets(
         cde_cfg,
-        scaler,
+        scaler=scaler,
     )
 
-    model = build_model(
+    model = build_diffusion(
         cde_cfg,
-        len(scaler.columns),
+        n_assets=len(scaler.columns),
     )
 
     model.load_state_dict(
@@ -869,6 +871,34 @@ def run_router(args):
     baseline_val = float(
         cde_summary["best_val_loss"]
     )
+    checkpoint_validation_loss = baseline_val
+    if not np.isclose(checkpoint["val_loss"], baseline_val, rtol=1e-5, atol=1e-6):
+        raise RuntimeError("CDE checkpoint validation loss does not match its summary")
+
+    # Router validation historically interleaves timesteps and noise in one
+    # CPU generator. Diffusion validation now has separate generators. Keep
+    # the router stream unchanged, but recognize checkpoints from either
+    # convention rather than comparing losses under different corruptions.
+    frozen_router_loss = evaluate_router_loss(
+        model, torch.nn.Identity(), val_conditions, val_targets,
+        batch_size=validation_batch_size, validation_seed=validation_seed, device=device,
+    )
+    separate_stream_checkpoint = not np.isclose(
+        frozen_router_loss, baseline_val, rtol=1e-5, atol=1e-6,
+    )
+    if separate_stream_checkpoint:
+        loader = DataLoader(
+            datasets.val, batch_size=validation_batch_size, shuffle=False,
+            collate_fn=collate_return_batch,
+        )
+        diffusion_loss = evaluate_diffusion_loss(
+            model, loader, device=device, validation_seed=validation_seed,
+        )
+        if not np.isclose(diffusion_loss, baseline_val, rtol=1e-5, atol=1e-6):
+            raise RuntimeError("CDE validation loss matches neither known corruption stream")
+        baseline_val = frozen_router_loss
+        print("Checkpoint uses separate validation noise streams:", checkpoint_validation_loss)
+        print("Paired router comparisons use the historical router stream:", baseline_val)
 
     softmax_initial = evaluate_router_loss(
         model,
@@ -1272,6 +1302,9 @@ def run_router(args):
         "tau": tau,
         "gamma": gamma,
     }
+    if separate_stream_checkpoint:
+        comparison["checkpoint_validation_loss"] = checkpoint_validation_loss
+        comparison["baseline_validation_stream"] = "router_legacy"
 
     with (
         output_dir

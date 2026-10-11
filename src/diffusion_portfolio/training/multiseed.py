@@ -1,4 +1,4 @@
-"""Paired multi-seed confirmation for retained CDE Neural CDE."""
+"""Paired multi-seed confirmation for the retained Neural CDE."""
 
 from __future__ import annotations
 
@@ -427,16 +427,13 @@ def aggregate(
 
 
 def run_multiseed(args, *, repo_root) -> None:
-
-    repo_root = (
-        Path(__file__)
-        .resolve()
-        .parents[1]
-    )
+    # The CLI supplies the checkout root. Resolve caller paths before changing
+    # subprocess cwd so relative outputs refer to the same files in both places.
+    repo_root = Path(repo_root).resolve()
 
     output_root = Path(
         args.output_root
-    )
+    ).resolve()
 
     output_root.mkdir(
         parents=True,
@@ -450,11 +447,11 @@ def run_multiseed(args, *, repo_root) -> None:
 
     vanilla42 = Path(
         args.seed42_vanilla_dir
-    )
+    ).resolve()
 
     cde42 = Path(
         args.seed42_cde_dir
-    )
+    ).resolve()
 
     print(
         "=" * 72

@@ -13,6 +13,14 @@ Scripts parse arguments and call these modules. Proposal stages are research
 hypotheses, not software-package phases; no unimplemented proposal components
 are included.
 
+Return sources expose `ReturnTable(dates, returns, columns)` with decimal returns
+of shape `[time, assets]`; add a loader to the small `data/registry.py` dispatch
+and select it in the data config. Encoders and diffusion builders receive the
+asset count from that panel. The existing synthetic generator retains its
+log-return API, so its outputs must be converted explicitly before use as a
+decimal return panel. Baseline-specific objectives and adapters belong together
+under `baselines/`; reusable experiment functions belong in the package.
+
 ## Install and test
 
 ```bash
@@ -43,6 +51,20 @@ python scripts/evaluate_diffusion.py --run-dir outputs/levy
 use `train_evidential_regime.py`, `train_router.py`, `configs/evidential.yaml` and
 `configs/router.yaml`. Diffolio uses `train_diffolio.py` and `evaluate_diffolio.py`;
 its configured Goyal workbook must exist at `data/raw/Data2025.xlsx`.
+
+`scripts/diagnose_diffusion.py` checks timestep prediction error and stochastic
+versus zero-posterior-noise reverse-chain scale on training examples only:
+
+```bash
+python scripts/diagnose_diffusion.py --config outputs/cde/config.yaml --checkpoint outputs/cde/best.pt --standardizer outputs/cde/standardizer.npz
+```
+
+It supports the existing Gaussian epsilon and v parameterizations and is a
+sampler diagnostic, not a forecast benchmark. Its default noise seeds are
+preserved from the original diagnostic. The historical router uses interleaved
+validation noise, while diffusion training uses separate timestep/noise streams.
+Routing recognizes both checkpoint conventions, keeps its original paired
+comparison stream, and records a distinct saved checkpoint loss when needed.
 
 Forecast evaluation defaults to validation. Gaussian test evaluation is an
 explicit `--split test` option; it is not part of refactor validation. Dates,
