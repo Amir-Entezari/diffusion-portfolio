@@ -74,3 +74,90 @@ def test_shared_preparation_uses_dataset_dispatch_and_saved_scaler_without_refit
     assert requested == ["existing_loader", "existing_loader"]
     np.testing.assert_array_equal(restored.train.model_windows.history, datasets.train.model_windows.history)
     np.testing.assert_array_equal(restored.val.model_windows.target, datasets.val.model_windows.target)
+
+
+@pytest.mark.parametrize("subtract_risk_free", [True, False])
+def test_preparation_return_convention_is_explicit_and_train_only(monkeypatch, subtract_risk_free):
+    """An artificial arithmetic panel is a test input, not a synthetic adapter."""
+    from dataclasses import replace
+    from diffusion_portfolio.config import load_config
+    from diffusion_portfolio.data import RiskFreeSeries, preparation, to_excess_returns
+
+    dates = pd.bdate_range("2020-01-02", periods=40)
+    values = np.random.default_rng(13).normal(0, .01, (40, 7)).astype(np.float32)
+    columns = tuple(f"asset_{i}" for i in range(7))
+    panel = ReturnTable(dates, values, columns)
+    rf = RiskFreeSeries(dates, np.linspace(.0001, .0002, 40).astype(np.float32))
+    cfg = load_config(Path(__file__).parents[2] / "configs/mvp.yaml")
+    cfg = replace(cfg, data=replace(
+        cfg.data, dataset="test_arithmetic_panel", subtract_risk_free=subtract_risk_free,
+        lookback=4, sample_start=str(dates[0].date()), sample_end=str(dates[-1].date()),
+        train_end=str(dates[19].date()), val_end=str(dates[29].date()),
+    ))
+    monkeypatch.setattr(preparation, "load_return_table", lambda name, **options: panel)
+    def risk_free():
+        assert subtract_risk_free, "No-adjustment path must not even load RF"
+        return rf
+    monkeypatch.setattr(preparation, "load_daily_risk_free", risk_free)
+    first, scaler = preparation.prepare_return_data(cfg)
+    expected = to_excess_returns(panel, rf) if subtract_risk_free else panel
+    reference_scaler = TrainStandardizer.fit(expected, train_end=dates[19])
+    np.testing.assert_array_equal(scaler.mean, reference_scaler.mean)
+    np.testing.assert_array_equal(scaler.std, reference_scaler.std)
+    np.testing.assert_array_equal(first.val.raw_windows.history[0], expected.returns[16:20])
+    np.testing.assert_array_equal(first.val.raw_windows.target[0, 0], expected.returns[20])
+    assert first.train.raw_windows.target_dates[-1] == dates[19]
+    assert first.val.raw_windows.target_dates[0] == dates[20]
+    assert first.test.raw_windows.target_dates[0] == dates[30]
+
+    # Neither future observations nor future RF rates may change training.
+    altered = values.copy()
+    altered[20:] += 100
+    panel = ReturnTable(dates, altered, columns)
+    altered_rf = rf.returns.copy()
+    altered_rf[20:] += 10
+    rf = RiskFreeSeries(dates, altered_rf)
+    second, second_scaler = preparation.prepare_return_data(cfg)
+    np.testing.assert_array_equal(second_scaler.mean, scaler.mean)
+    np.testing.assert_array_equal(second_scaler.std, scaler.std)
+    for space in ("model_windows", "raw_windows"):
+        for key in ("history", "target"):
+            np.testing.assert_array_equal(
+                getattr(getattr(second.train, space), key),
+                getattr(getattr(first.train, space), key),
+            )
+
+
+def test_kf12_default_preparation_is_numerically_unchanged(monkeypatch):
+    from dataclasses import replace
+    from diffusion_portfolio.config import load_config
+    from diffusion_portfolio.data import RiskFreeSeries, preparation, to_excess_returns
+
+    dates = pd.bdate_range("1999-11-01", periods=100)
+    assets = ReturnTable(dates, np.random.default_rng(11).normal(0, .01, (100, 12)).astype(np.float32), INDUSTRY_COLUMNS)
+    rf = RiskFreeSeries(dates, np.full(100, .0001, np.float32))
+    cfg = load_config(Path(__file__).parents[2] / "configs/cde.yaml")
+    assert cfg.data.subtract_risk_free is True
+    assert cfg.data.source_options == {}
+    cfg = replace(cfg, data=replace(
+        cfg.data, lookback=10, sample_start=str(dates[0].date()),
+        sample_end=str(dates[-1].date()), train_end=str(dates[49].date()),
+        val_end=str(dates[74].date()),
+    ))
+    monkeypatch.setattr(preparation, "load_return_table", lambda name: assets)
+    monkeypatch.setattr(preparation, "load_daily_risk_free", lambda: rf)
+    actual, scaler = preparation.prepare_return_data(cfg)
+    legacy_raw = to_excess_returns(assets, rf)
+    legacy_scaler = TrainStandardizer.fit(legacy_raw, train_end=cfg.data.train_end)
+    legacy = build_window_datasets(
+        legacy_scaler.transform(legacy_raw), legacy_raw, lookback=10, horizon=1,
+        train_end=cfg.data.train_end, val_end=cfg.data.val_end, test_end=cfg.data.sample_end,
+    )
+    np.testing.assert_array_equal(scaler.mean, legacy_scaler.mean)
+    np.testing.assert_array_equal(scaler.std, legacy_scaler.std)
+    for split in ("train", "val", "test"):
+        for space in ("model_windows", "raw_windows"):
+            a, b = getattr(getattr(actual, split), space), getattr(getattr(legacy, split), space)
+            assert a.target_dates.equals(b.target_dates)
+            np.testing.assert_array_equal(a.history, b.history)
+            np.testing.assert_array_equal(a.target, b.target)

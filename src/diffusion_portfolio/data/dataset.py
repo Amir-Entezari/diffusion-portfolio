@@ -1,7 +1,8 @@
-"""PyTorch datasets and loaders for windowed excess returns.
+"""PyTorch datasets and loaders for windowed returns.
 
-The neural model consumes standardized returns, while raw decimal excess
-returns are retained alongside them for evaluation and portfolio construction.
+The neural model consumes standardized returns, while raw decimal returns are
+retained alongside them. Raw returns are asset or excess returns according to
+the explicit risk-free choice in data preparation.
 """
 
 from __future__ import annotations
@@ -38,7 +39,7 @@ class ReturnWindowDataset(Dataset):
         Windows in model space, normally standardized returns.
 
     raw_windows:
-        Matching windows in raw decimal excess-return space.
+        Matching windows in raw decimal return space.
 
     Notes
     -----
@@ -175,10 +176,9 @@ def build_window_datasets(
 ) -> DatasetSplits:
     """Build aligned model/raw PyTorch datasets.
 
-    ``model_table`` is normally standardized excess returns.
+    ``model_table`` is normally standardized returns.
 
-    ``raw_table`` is the corresponding unstandardized decimal
-    excess-return table.
+    ``raw_table`` is the corresponding unstandardized decimal return table.
     """
 
     if not model_table.dates.equals(

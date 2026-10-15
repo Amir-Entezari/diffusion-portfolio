@@ -13,12 +13,13 @@ Scripts parse arguments and call these modules. Proposal stages are research
 hypotheses, not software-package phases; no unimplemented proposal components
 are included.
 
-Return sources expose `ReturnTable(dates, returns, columns)` with decimal returns
+Return sources expose `ReturnTable(dates, returns, columns)` with arithmetic decimal returns
 of shape `[time, assets]`; add a loader to the small `data/registry.py` dispatch
 and select it in the data config. Encoders and diffusion builders receive the
-asset count from that panel. The existing synthetic generator retains its
-log-return API, so its outputs must be converted explicitly before use as a
-decimal return panel. Baseline-specific objectives and adapters belong together
+asset count from that panel. Existing synthetic code is experimental: no generator
+is selected, validated or integrated into this pipeline. A future adapter must
+explicitly convert any log-return outputs to arithmetic decimal returns before
+exposing a panel. Baseline-specific objectives and adapters belong together
 under `baselines/`; reusable experiment functions belong in the package.
 
 ## Install and test
@@ -31,6 +32,65 @@ python -m compileall src scripts
 
 For MLP-only use, `pip install -e .` is sufficient. CDE and topology use the
 existing optional `torchcde` and `gudhi` dependencies.
+
+## French return datasets
+
+The shared diffusion pipeline supports `ken_french_12`, `ken_french_49` and
+`ken_french_100_size_bm`. The latter two load the official **daily value-weighted**
+[49 Industry](https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/Data_Library/det_49_ind_port.html)
+and [100 Size × Book-to-Market](https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/Data_Library/det_100_port_sz.html)
+portfolios. Archives are cached under `data/raw/` and reused without refreshing.
+Keep those archives alongside run artifacts: French can revise historical data.
+
+`configs/cde_ff49.yaml` and `configs/cde_ff100.yaml` retain the CDE model, solver,
+seeds, optimizer and calendar split settings from `configs/cde.yaml`.
+`data.subtract_risk_free: true` subtracts exactly aligned daily French RF before
+train-only normalization. It defaults to `true`, preserving KF12 behavior. A
+future arithmetic-return source can set it to `false`; RF is then never loaded.
+Source adapters must not return log returns or silently pre-subtract RF.
+
+`data.source_options` forwards ordinary keyword arguments to the selected loader,
+for example `path`, `download_if_missing: false`, or `missing_policy`. The new
+French loaders reject missing sentinels by default. These two configs explicitly
+choose `missing_policy: drop`: any date containing `-99.99` or `-999` is excluded
+across **all** assets, with a warning reporting the count and affected date range.
+No missing value is replaced by zero. Malformed rows, nonfinite values, unordered
+dates and unexpected labels always fail. Exclusion occurs before sample slicing;
+lookback counts retained observations, which can span gaps in the source calendar.
+The actual available period can therefore start later than `sample_start`.
+
+Availability in the official 202608 archives, verified on 2026-10-15, within the
+configured 1958–2023 sample:
+
+| Dataset | Retained observations | Excluded dates | Train / validation / test windows |
+|---|---:|---:|---:|
+| FF49 | 13,745 | 2,868 | 7,648 / 1,256 / 4,781 |
+| FF100 Size × B/M | 13,197 | 3,416 | 8,730 / 128 / 4,279 |
+
+FF49's first complete row is 1969-07-01, with further exclusions through
+1971-03-11. FF100's retained sample starts on 1958-01-02, but it has a
+**1,828-calendar-day gap from 1999-06-30 to 2004-07-01**; all 128 retained
+validation dates are in July–December 2004. Both samples end on 2023-12-29.
+These configs preserve calendar split boundaries, not matched observation
+samples across datasets; small smoke losses are not forecasting results.
+The smoke report includes available target ranges and the largest calendar gap.
+
+Initial checks (download once; no experiment training or forecast evaluation):
+
+```bash
+python scripts/data_smoke_test.py --config configs/cde_ff49.yaml
+python scripts/data_smoke_test.py --config configs/cde_ff100.yaml
+
+# Optional: one training batch's CDE forward/loss/backward, with no parameter update.
+OMP_NUM_THREADS=1 python scripts/data_smoke_test.py --config configs/cde_ff49.yaml --model-smoke --smoke-batch-size 1 --device cpu
+OMP_NUM_THREADS=1 python scripts/data_smoke_test.py --config configs/cde_ff100.yaml --model-smoke --smoke-batch-size 1 --device cpu
+```
+
+Add another source by returning a canonical panel from `data/sources/`, adding it
+to the small `data/registry.py` dispatch, and selecting its dataset/options and RF
+convention in config. Models, standardization, windows and diffusion run logic
+do not need dataset-specific changes. Saved scalers still validate asset labels
+and ordering; checkpoints and scalers from different asset panels are not interchangeable.
 
 ## Current experiments
 

@@ -30,23 +30,28 @@ def prepare_return_data(cfg, *, standardizer_path=None, scaler=None):
     Existing diffusion experiments always fit train Z-scores when no saved
     scaler is supplied, including configs declaring return_scaling=none. Keep
     that historical convention here; Diffolio has its own explicit scaling.
-    The source supplies decimal asset returns; RF subtraction stays separate.
+    Sources supply arithmetic decimal asset returns, never log returns or
+    already-adjusted excess returns. RF subtraction is explicit in the config.
     """
     data = cfg.data
     assets = slice_return_table(
-        load_return_table(data.dataset), data.sample_start, data.sample_end
+        load_return_table(data.dataset, **data.source_options),
+        data.sample_start, data.sample_end,
     )
-    excess = to_excess_returns(assets, load_daily_risk_free())
+    raw = (
+        to_excess_returns(assets, load_daily_risk_free())
+        if data.subtract_risk_free else assets
+    )
     if scaler is not None and standardizer_path is not None:
         raise ValueError("Supply a scaler or its path, not both")
     if scaler is None:
         scaler = (
-            TrainStandardizer.fit(excess, train_end=data.train_end)
+            TrainStandardizer.fit(raw, train_end=data.train_end)
             if standardizer_path is None
             else load_standardizer(standardizer_path)
         )
     datasets = build_window_datasets(
-        scaler.transform(excess), excess,
+        scaler.transform(raw), raw,
         lookback=data.lookback, horizon=data.horizon,
         train_end=data.train_end, val_end=data.val_end, test_end=data.sample_end,
     )

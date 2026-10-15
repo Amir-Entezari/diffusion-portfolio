@@ -1,4 +1,4 @@
-"""Train-only standardization for multivariate excess returns.
+"""Train-only standardization for multivariate decimal returns.
 
 The scientific MVP standardizes each asset independently using statistics
 estimated only from the declared training period.
@@ -6,7 +6,8 @@ estimated only from the declared training period.
 Validation and test observations never contribute to fitted statistics.
 
 The transformation is reversible so generated samples can be converted back
-to decimal excess returns before statistical or portfolio evaluation.
+to decimal returns before evaluation. Whether raw returns are asset returns or
+excess returns is selected separately in data preparation.
 """
 
 from __future__ import annotations

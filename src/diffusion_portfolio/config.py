@@ -1,7 +1,7 @@
 """Small, explicit configuration surface for the scientific MVP."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +24,10 @@ class DataConfig:
     horizon: int = 1
 
     return_scaling: str = "train_zscore"
+    # Sources supply arithmetic decimal asset returns. RF subtraction is a
+    # separate choice; True preserves all existing French/KF12 experiments.
+    subtract_risk_free: bool = True
+    source_options: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -135,6 +139,12 @@ def load_config(path: str | Path) -> MVPConfig:
         )
     if cfg.data.lookback <= 0 or cfg.data.horizon <= 0:
         raise ValueError("lookback and horizon must be positive")
+    if cfg.data.frequency != "daily":
+        raise ValueError("data.frequency must be 'daily'")
+    if not isinstance(cfg.data.subtract_risk_free, bool):
+        raise ValueError("data.subtract_risk_free must be a boolean")
+    if not isinstance(cfg.data.source_options, dict):
+        raise TypeError("data.source_options must be a mapping of loader arguments")
     if cfg.data.return_scaling not in {
         "none",
         "train_zscore",

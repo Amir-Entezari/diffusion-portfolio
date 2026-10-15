@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 import yaml
 
 from diffusion_portfolio.config import load_config
@@ -86,3 +87,15 @@ def test_config_values_reach_instantiated_components(tmp_path: Path):
     assert net.time_embed[1].out_features == 16
     # AdaGN receives time embedding + model condition.
     assert net.encoders[0][0].norm1.proj.in_features == 16 + 24
+
+
+@pytest.mark.parametrize("data, message", [
+    ({"subtract_risk_free": "false"}, "boolean"),
+    ({"source_options": []}, "mapping"),
+    ({"frequency": "monthly"}, "daily"),
+])
+def test_invalid_data_source_settings_are_rejected(tmp_path, data, message):
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump({"data": data}))
+    with pytest.raises((ValueError, TypeError), match=message):
+        load_config(path)

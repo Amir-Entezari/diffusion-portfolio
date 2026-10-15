@@ -10,6 +10,12 @@ def parse_args():
         "--config",
         default="configs/mvp.yaml",
     )
+    parser.add_argument(
+        "--model-smoke", action="store_true",
+        help="Also check one training batch's forward/loss/backward; no optimizer update.",
+    )
+    parser.add_argument("--smoke-batch-size", type=int, default=2)
+    parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="cpu")
     return parser.parse_args()
 
 

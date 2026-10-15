@@ -1,257 +1,87 @@
-"""End-to-end smoke test for the real KF12 MVP data pipeline."""
-
+"""Data and optional one-batch model smoke checks through shared preparation."""
 from __future__ import annotations
-
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from diffusion_portfolio.config import load_config
-from diffusion_portfolio.data import (
-    TrainStandardizer,
-    build_window_datasets,
-    load_daily_risk_free,
-    load_kf12_daily,
-    make_dataloaders,
-    slice_return_table,
-    to_excess_returns,
-)
+from diffusion_portfolio.data import collate_return_batch, make_dataloaders
+from diffusion_portfolio.data.preparation import prepare_return_data
 
 
 def run_data_check(args) -> None:
-
-    cfg = load_config(
-        Path(args.config)
-    )
-
-    # ---------------------------------------------------------
-    # 1. Official KF12 industry returns
-    # ---------------------------------------------------------
-    assets = load_kf12_daily()
-
-    assets = slice_return_table(
-        assets,
-        start=cfg.data.sample_start,
-        end=cfg.data.sample_end,
-    )
-
-    # ---------------------------------------------------------
-    # 2. Official daily risk-free return
-    # ---------------------------------------------------------
-    risk_free = load_daily_risk_free()
-
-    # ---------------------------------------------------------
-    # 3. Daily excess returns
-    # ---------------------------------------------------------
-    excess = to_excess_returns(
-        assets,
-        risk_free,
-    )
-
-    assert excess.returns.shape == assets.returns.shape
-    assert excess.dates.equals(assets.dates)
-    assert np.isfinite(excess.returns).all()
-
-    # ---------------------------------------------------------
-    # 4. Model-space representation
-    # ---------------------------------------------------------
-    scaler = None
-
-    if cfg.data.return_scaling == "train_zscore":
-        scaler = TrainStandardizer.fit(
-            excess,
-            train_end=cfg.data.train_end,
-        )
-
-        model_table = scaler.transform(
-            excess
-        )
-
-    elif cfg.data.return_scaling == "none":
-        model_table = excess
-
-    else:
-        raise RuntimeError(
-            f"Unsupported return scaling: "
-            f"{cfg.data.return_scaling}"
-        )
-
-    # ---------------------------------------------------------
-    # 5. Windows + temporal splits
-    # ---------------------------------------------------------
-    datasets = build_window_datasets(
-        model_table,
-        excess,
-        lookback=cfg.data.lookback,
-        horizon=cfg.data.horizon,
-        train_end=cfg.data.train_end,
-        val_end=cfg.data.val_end,
-        test_end=cfg.data.sample_end,
-    )
-
-    assert len(datasets.train) > 0
-    assert len(datasets.val) > 0
-    assert len(datasets.test) > 0
-
-    # Temporal boundary checks.
-    train_last = (
-        datasets.train.model_windows.target_dates[-1]
-    )
-    val_first = (
-        datasets.val.model_windows.target_dates[0]
-    )
-    val_last = (
-        datasets.val.model_windows.target_dates[-1]
-    )
-    test_first = (
-        datasets.test.model_windows.target_dates[0]
-    )
-
-    assert train_last <= pd.Timestamp(
-        cfg.data.train_end
-    )
-
-    assert val_first > pd.Timestamp(
-        cfg.data.train_end
-    )
-
-    assert val_last <= pd.Timestamp(
-        cfg.data.val_end
-    )
-
-    assert test_first > pd.Timestamp(
-        cfg.data.val_end
-    )
-
-    # ---------------------------------------------------------
-    # 6. PyTorch loaders
-    # ---------------------------------------------------------
+    cfg = load_config(args.config)
+    datasets, scaler = prepare_return_data(cfg)
     loaders = make_dataloaders(
-        datasets,
-        batch_size=cfg.training.batch_size,
-        seed=cfg.seed,
+        datasets, batch_size=cfg.training.batch_size, seed=cfg.seed,
     )
+    batch = next(iter(loaders.val))
+    n_assets = len(scaler.columns)
+    batch_size = len(batch["target_date"])
+    history_shape = (batch_size, cfg.data.lookback, n_assets)
+    target_shape = (batch_size, cfg.data.horizon, n_assets)
+    for key in ("history", "history_raw"):
+        assert tuple(batch[key].shape) == history_shape
+    for key in ("target", "target_raw"):
+        assert tuple(batch[key].shape) == target_shape
+    assert batch["target_date"].is_monotonic_increasing
+    recovered = scaler.inverse_transform(batch["target"].numpy())
+    inverse_error = float(np.max(np.abs(recovered - batch["target_raw"].numpy())))
+    assert inverse_error < 1e-6
 
-    batch = next(
-        iter(loaders.val)
-    )
+    train_dates = datasets.train.raw_windows.target_dates
+    val_dates = datasets.val.raw_windows.target_dates
+    test_dates = datasets.test.raw_windows.target_dates
+    assert train_dates[-1] <= pd.Timestamp(cfg.data.train_end) < val_dates[0]
+    assert val_dates[-1] <= pd.Timestamp(cfg.data.val_end) < test_dates[0]
+    assert test_dates[-1] <= pd.Timestamp(cfg.data.sample_end)
 
-    expected_history_shape = (
-        batch["history"].shape[0],
-        cfg.data.lookback,
-        len(excess.columns),
-    )
+    print("Data smoke test passed")
+    print("dataset:", cfg.data.dataset)
+    print("raw convention:", "arithmetic excess returns" if cfg.data.subtract_risk_free
+          else "arithmetic asset returns")
+    print("source options:", cfg.data.source_options)
+    print("assets:", n_assets)
+    print("sample requested:", cfg.data.sample_start, "->", cfg.data.sample_end)
+    print("observations:", sum(map(len, (datasets.train, datasets.val, datasets.test)))
+          + cfg.data.lookback + cfg.data.horizon - 1)
+    # Match actual diffusion preparation, including its legacy scaling convention.
+    print("model scaling: train_zscore (configured:", cfg.data.return_scaling + ")")
+    for name, dataset in (("train", datasets.train), ("validation", datasets.val),
+                          ("test", datasets.test)):
+        dates = dataset.raw_windows.target_dates
+        print(f"{name}: {len(dataset)} windows; targets {dates[0].date()} -> {dates[-1].date()}")
+    dates = train_dates.append([val_dates, test_dates])
+    gaps = dates[1:] - dates[:-1]
+    largest_gap = int(np.argmax(gaps))
+    print(f"largest retained target-date gap: {gaps[largest_gap].days} calendar days "
+          f"({dates[largest_gap].date()} -> {dates[largest_gap + 1].date()})")
+    print("validation history:", tuple(batch["history"].shape))
+    print("validation target:", tuple(batch["target"].shape))
+    print("inverse/raw max error:", inverse_error)
 
-    expected_target_shape = (
-        batch["target"].shape[0],
-        cfg.data.horizon,
-        len(excess.columns),
-    )
+    if getattr(args, "model_smoke", False):
+        import torch
+        from diffusion_portfolio.models.diffusion.build import build_diffusion
+        from diffusion_portfolio.utils.device import resolve_device
+        from diffusion_portfolio.utils.seed import set_global_seed
 
-    assert tuple(
-        batch["history"].shape
-    ) == expected_history_shape
-
-    assert tuple(
-        batch["target"].shape
-    ) == expected_target_shape
-
-    assert tuple(
-        batch["history_raw"].shape
-    ) == expected_history_shape
-
-    assert tuple(
-        batch["target_raw"].shape
-    ) == expected_target_shape
-
-    assert batch[
-        "target_date"
-    ].is_monotonic_increasing
-
-    # ---------------------------------------------------------
-    # 7. Model-space ↔ raw-space consistency
-    # ---------------------------------------------------------
-    if scaler is not None:
-        recovered = scaler.inverse_transform(
-            batch["target"].numpy()
+        count = getattr(args, "smoke_batch_size", 2)
+        if count <= 0:
+            raise ValueError("smoke-batch-size must be positive")
+        device = resolve_device(getattr(args, "device", "cpu"))
+        set_global_seed(cfg.seed, deterministic=False)
+        model = build_diffusion(cfg, n_assets=n_assets).to(device)
+        # Training examples only. No optimizer update, sampling or checkpoints.
+        train_batch = collate_return_batch([
+            datasets.train[i] for i in range(min(count, len(datasets.train)))
+        ])
+        output = model.training_loss(
+            train_batch["history"].to(device), train_batch["target"].to(device),
         )
-
-        inverse_error = float(
-            np.max(
-                np.abs(
-                    recovered
-                    - batch["target_raw"].numpy()
-                )
-            )
-        )
-
-        assert inverse_error < 1e-6
-
-    else:
-        inverse_error = 0.0
-
-        np.testing.assert_allclose(
-            batch["target"].numpy(),
-            batch["target_raw"].numpy(),
-        )
-
-    # ---------------------------------------------------------
-    # Reproducibility report
-    # ---------------------------------------------------------
-    print("Real-data smoke test passed")
-    print()
-
-    print("Config")
-    print("------")
-    print(f"sample: {cfg.data.sample_start} -> {cfg.data.sample_end}")
-    print(f"train_end: {cfg.data.train_end}")
-    print(f"val_end: {cfg.data.val_end}")
-    print(f"lookback: {cfg.data.lookback}")
-    print(f"horizon: {cfg.data.horizon}")
-    print(f"scaling: {cfg.data.return_scaling}")
-
-    print()
-    print("Data")
-    print("----")
-    print(f"observations: {len(excess.dates)}")
-    print(f"assets: {len(excess.columns)}")
-    print(
-        f"dates: {excess.dates[0].date()} "
-        f"-> {excess.dates[-1].date()}"
-    )
-
-    print()
-    print("Datasets")
-    print("--------")
-    print(f"train: {len(datasets.train)}")
-    print(f"val:   {len(datasets.val)}")
-    print(f"test:  {len(datasets.test)}")
-
-    print()
-    print("Validation batch")
-    print("----------------")
-    print(
-        "history:",
-        tuple(batch["history"].shape),
-    )
-    print(
-        "target:",
-        tuple(batch["target"].shape),
-    )
-    print(
-        "history_raw:",
-        tuple(batch["history_raw"].shape),
-    )
-    print(
-        "target_raw:",
-        tuple(batch["target_raw"].shape),
-    )
-    print(
-        "first target date:",
-        batch["target_date"][0],
-    )
-    print(
-        "inverse/raw max error:",
-        inverse_error,
-    )
+        assert output.prediction.shape == (len(train_batch["target"]), n_assets)
+        assert torch.isfinite(output.loss)
+        output.loss.backward()
+        gradients = [p.grad for p in model.parameters() if p.grad is not None]
+        assert gradients and all(torch.isfinite(g).all() for g in gradients)
+        print("Model forward/loss/backward smoke passed; training loss:", float(output.loss.detach()))

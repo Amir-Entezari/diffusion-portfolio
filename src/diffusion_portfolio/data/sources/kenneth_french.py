@@ -131,6 +131,11 @@ def download_kf12_daily(
     The downloaded ZIP is cached locally under ``data/raw`` by default.
     Repeated calls reuse the existing file unless ``overwrite=True``.
     """
+    return _download_daily_zip(KF12_DAILY_URL, destination, overwrite=overwrite)
+
+
+def _download_daily_zip(url: str, destination: str | Path, *, overwrite=False) -> Path:
+    """Cache an official French CSV ZIP atomically; shared by portfolio sources."""
 
     destination = Path(destination)
 
@@ -140,7 +145,7 @@ def download_kf12_daily(
     destination.parent.mkdir(parents=True, exist_ok=True)
 
     request = Request(
-        KF12_DAILY_URL,
+        url,
         headers={
             "User-Agent": "diffusion-portfolio-research/0.1"
         },

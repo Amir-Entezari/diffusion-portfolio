@@ -16,7 +16,9 @@ class ReturnTable:
     dates:
         Trading dates, strictly increasing.
     returns:
-        Decimal returns with shape [time, assets].
+        Decimal returns with shape [time, assets]. Source adapters must supply
+        arithmetic asset returns, not log returns or already-adjusted excess
+        returns; preprocessing applies any configured risk-free subtraction.
         Example: 1.25% is represented as 0.0125.
     columns:
         Asset names corresponding to the second axis of ``returns``.
