@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -39,6 +40,8 @@ def make_windows(
     table: ReturnTable,
     lookback: int,
     horizon: int = 1,
+    *,
+    max_gap_days: int = 7,
 ) -> WindowedReturns:
     """Create chronological history/target windows.
 
@@ -60,6 +63,12 @@ def make_windows(
     horizon:
         Number of future trading days to predict/generate.
 
+    max_gap_days:
+        Maximum elapsed calendar days between adjacent observations within
+        one history-plus-target window. Longer gaps start a new segment that
+        needs its own complete lookback. Seven days permits weekends and
+        observed KF12 market closures; this is not a trading-calendar check.
+
     Returns
     -------
     WindowedReturns
@@ -78,18 +87,42 @@ def make_windows(
 
     if horizon <= 0:
         raise ValueError("horizon must be positive")
+    if isinstance(max_gap_days, bool) or not isinstance(max_gap_days, int) or max_gap_days <= 0:
+        raise ValueError("max_gap_days must be a positive integer")
 
     returns = table.returns
     dates = table.dates
 
     n_time, n_assets = returns.shape
 
-    n_samples = n_time - lookback - horizon + 1
+    n_candidates = n_time - lookback - horizon + 1
 
-    if n_samples <= 0:
+    if n_candidates <= 0:
         raise ValueError(
             "Not enough observations for requested "
             f"lookback={lookback}, horizon={horizon}"
+        )
+
+    # A window is valid only when its first history and last target observation
+    # belong to the same continuous segment. This covers the history/target
+    # join and gaps inside multi-step targets, without padding missing returns.
+    breaks = (dates[1:] - dates[:-1]) > pd.Timedelta(days=max_gap_days)
+    segments = np.r_[0, np.cumsum(breaks)]
+    starts = np.arange(lookback, n_time - horizon + 1)
+    starts = starts[segments[starts - lookback] == segments[starts + horizon - 1]]
+    n_samples = len(starts)
+    if n_samples == 0:
+        raise ValueError(
+            "No windows remain after continuity segmentation: each segment "
+            f"needs lookback={lookback} plus horizon={horizon} observations "
+            f"with adjacent gaps <= {max_gap_days} calendar days"
+        )
+    if n_samples < n_candidates:
+        warnings.warn(
+            f"Window continuity excluded {n_candidates - n_samples}/{n_candidates} "
+            f"candidate windows across {int(breaks.sum())} gaps exceeding "
+            f"{max_gap_days} calendar days; retained {n_samples}",
+            UserWarning,
         )
 
     history = np.empty(
@@ -104,8 +137,7 @@ def make_windows(
 
     target_dates: list[pd.Timestamp] = []
 
-    for sample_idx in range(n_samples):
-        target_start = sample_idx + lookback
+    for sample_idx, target_start in enumerate(starts):
         target_end = target_start + horizon
 
         history[sample_idx] = returns[

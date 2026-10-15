@@ -93,6 +93,9 @@ def test_config_values_reach_instantiated_components(tmp_path: Path):
     ({"subtract_risk_free": "false"}, "boolean"),
     ({"source_options": []}, "mapping"),
     ({"frequency": "monthly"}, "daily"),
+    ({"max_gap_days": 0}, "positive integer"),
+    ({"max_gap_days": True}, "positive integer"),
+    ({"max_gap_days": 2.5}, "positive integer"),
 ])
 def test_invalid_data_source_settings_are_rejected(tmp_path, data, message):
     path = tmp_path / "config.yaml"

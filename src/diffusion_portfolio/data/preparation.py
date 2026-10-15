@@ -54,6 +54,7 @@ def prepare_return_data(cfg, *, standardizer_path=None, scaler=None):
         scaler.transform(raw), raw,
         lookback=data.lookback, horizon=data.horizon,
         train_end=data.train_end, val_end=data.val_end, test_end=data.sample_end,
+        max_gap_days=data.max_gap_days,
     )
     return datasets, scaler
 

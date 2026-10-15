@@ -1,7 +1,7 @@
 # Retained Neural CDE settings; only the daily value-weighted dataset changes.
 # Sample/split dates, seeds, solver and optimization match configs/cde.yaml.
-# Missing portfolios cause long calendar gaps and leave only 128 validation
-# dates in the verified 202608 archive. See README before interpreting results.
+# Missing portfolios cause long calendar gaps. Only 68 validation windows remain
+# after continuity segmentation in the verified 202608 archive. See README.
 seed: 42
 
 data:
@@ -16,6 +16,8 @@ data:
 
   lookback: 60
   horizon: 1
+  # Each segment needs a new lookback; no window may bridge a long data outage.
+  max_gap_days: 7
 
   return_scaling: train_zscore
   subtract_risk_free: true

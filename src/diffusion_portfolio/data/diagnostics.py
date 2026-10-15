@@ -43,8 +43,8 @@ def run_data_check(args) -> None:
     print("source options:", cfg.data.source_options)
     print("assets:", n_assets)
     print("sample requested:", cfg.data.sample_start, "->", cfg.data.sample_end)
-    print("observations:", sum(map(len, (datasets.train, datasets.val, datasets.test)))
-          + cfg.data.lookback + cfg.data.horizon - 1)
+    print("usable windows:", sum(map(len, (datasets.train, datasets.val, datasets.test))))
+    print("continuity: segment at gaps exceeding", cfg.data.max_gap_days, "calendar days")
     # Match actual diffusion preparation, including its legacy scaling convention.
     print("model scaling: train_zscore (configured:", cfg.data.return_scaling + ")")
     for name, dataset in (("train", datasets.train), ("validation", datasets.val),

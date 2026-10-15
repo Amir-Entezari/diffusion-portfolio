@@ -15,6 +15,8 @@ data:
 
   lookback: 60
   horizon: 1
+  # Coarse continuity guard; windows never cross larger calendar gaps.
+  max_gap_days: 7
 
   return_scaling: train_zscore
   subtract_risk_free: true

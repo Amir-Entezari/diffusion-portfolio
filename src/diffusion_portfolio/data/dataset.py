@@ -173,12 +173,14 @@ def build_window_datasets(
     train_end: str,
     val_end: str,
     test_end: str | None = None,
+    max_gap_days: int = 7,
 ) -> DatasetSplits:
     """Build aligned model/raw PyTorch datasets.
 
     ``model_table`` is normally standardized returns.
 
     ``raw_table`` is the corresponding unstandardized decimal return table.
+    Both spaces use identical continuity segmentation before date splitting.
     """
 
     if not model_table.dates.equals(
@@ -197,12 +199,14 @@ def build_window_datasets(
         model_table,
         lookback=lookback,
         horizon=horizon,
+        max_gap_days=max_gap_days,
     )
 
     raw_windows = make_windows(
         raw_table,
         lookback=lookback,
         horizon=horizon,
+        max_gap_days=max_gap_days,
     )
 
     model_splits = split_windows_by_date(

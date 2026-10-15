@@ -28,6 +28,8 @@ class DataConfig:
     # separate choice; True preserves all existing French/KF12 experiments.
     subtract_risk_free: bool = True
     source_options: dict[str, Any] = field(default_factory=dict)
+    # Coarse daily continuity guard; not an exchange trading calendar.
+    max_gap_days: int = 7
 
 
 @dataclass(frozen=True)
@@ -145,6 +147,9 @@ def load_config(path: str | Path) -> MVPConfig:
         raise ValueError("data.subtract_risk_free must be a boolean")
     if not isinstance(cfg.data.source_options, dict):
         raise TypeError("data.source_options must be a mapping of loader arguments")
+    if (isinstance(cfg.data.max_gap_days, bool)
+            or not isinstance(cfg.data.max_gap_days, int) or cfg.data.max_gap_days <= 0):
+        raise ValueError("data.max_gap_days must be a positive integer")
     if cfg.data.return_scaling not in {
         "none",
         "train_zscore",

@@ -56,24 +56,64 @@ choose `missing_policy: drop`: any date containing `-99.99` or `-999` is exclude
 across **all** assets, with a warning reporting the count and affected date range.
 No missing value is replaced by zero. Malformed rows, nonfinite values, unordered
 dates and unexpected labels always fail. Exclusion occurs before sample slicing;
-lookback counts retained observations, which can span gaps in the source calendar.
-The actual available period can therefore start later than `sample_start`.
+the actual available period can therefore start later than `sample_start`.
 
-Availability in the official 202608 archives, verified on 2026-10-15, within the
-configured 1958–2023 sample:
+Shared diffusion windows use `data.max_gap_days: 7` by default. A larger gap
+starts a new segment; each segment needs its own complete history and target.
+Windows spanning a discontinuity are excluded with a warning, without filling
+any returns. The check covers histories, the history/target join and multi-step
+targets. Raw and standardized windows use the same dates. A segment too short
+for a complete window contributes no samples; if none remain, preparation fails.
+Normalization still fits all retained training observations only, and saved
+scalers are reused exactly as before.
+
+Seven days is a **coarse calendar-gap limit**, not an exchange calendar. It
+permits ordinary weekends/holidays and the observed seven-day KF12 closure;
+verified KF12 windows are unchanged. It cannot distinguish isolated missing
+trading days from legitimate short closures. Choose a different positive limit
+explicitly when another source's cadence requires it; increasing the limit to
+bridge a data outage is not a continuity fix.
+
+Availability in the cached official 202608 archives within the configured
+1958–2023 sample, after seven-day continuity segmentation:
 
 | Dataset | Retained observations | Excluded dates | Train / validation / test windows |
 |---|---:|---:|---:|
 | FF49 | 13,745 | 2,868 | 7,648 / 1,256 / 4,781 |
-| FF100 Size × B/M | 13,197 | 3,416 | 8,730 / 128 / 4,279 |
+| FF100 Size × B/M | 13,197 | 3,416 | 8,550 / 68 / 4,159 |
 
-FF49's first complete row is 1969-07-01, with further exclusions through
-1971-03-11. FF100's retained sample starts on 1958-01-02, but it has a
-**1,828-calendar-day gap from 1999-06-30 to 2004-07-01**; all 128 retained
-validation dates are in July–December 2004. Both samples end on 2023-12-29.
-These configs preserve calendar split boundaries, not matched observation
-samples across datasets; small smoke losses are not forecasting results.
-The smoke report includes available target ranges and the largest calendar gap.
+FF49's first complete row is 1969-07-01. After that, exactly one source date is
+missing through 2023: **1971-03-11**. Adjacent retained-date gaps have lengths
+1/2/3/4/5/7 days, with counts 10,768/133/2,507/333/2/1; none exceed seven days.
+FF49 is a practical full-training candidate under this declared coarse policy,
+with 1,256 validation windows, but it is not a perfectly complete trading-day
+panel. A stricter protocol could explicitly start after that missing date or
+segment at known source-calendar omissions; neither change is applied here.
+
+FF100 has **six** gaps exceeding a year: 366, 367, 367, 368, 1,670 and 1,828
+calendar days. The last is from 1999-06-30 to 2004-07-01. Segmentation excludes
+360 additional windows compared with the former row-adjacent construction.
+Only **68 validation windows**, from 2004-09-27 to 2004-12-31, remain after a new
+60-observation warmup. This is not an adequate basis for robust comparative
+research across market conditions. Keep this config as a data/model smoke
+reference until an explicit evaluation protocol is selected. Options are:
+
+- retain all 100 portfolios but predeclare new split dates within sufficiently
+  long continuous segments; this changes the benchmark and requires matched
+  comparator periods;
+- predeclare a smaller or different portfolio universe with better coverage;
+  this is a different dataset, with selection-bias tradeoffs, not FF100;
+- defer FF100 forecasting comparisons and use FF49 with its availability
+  caveats. Do not use the existing held-out test period to tune a workaround.
+
+Sample dates, split boundaries and portfolio universes are unchanged. Both
+retained samples end on 2023-12-29; these configs are not matched-observation
+KF12 comparisons. Old FF100 counts/results from windows crossing gaps are not
+comparable to the corrected construction. Checkpoint/scaler formats are unchanged;
+no historical artifact is rewritten. The smoke report shows usable window counts
+(not an observation count inferred from windows), target ranges and target-date
+gaps, which also include the post-discontinuity warmup. Smoke losses are not
+forecasting results.
 
 Initial checks (download once; no experiment training or forecast evaluation):
 
