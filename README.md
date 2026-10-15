@@ -126,6 +126,31 @@ OMP_NUM_THREADS=1 python scripts/data_smoke_test.py --config configs/cde_ff49.ya
 OMP_NUM_THREADS=1 python scripts/data_smoke_test.py --config configs/cde_ff100.yaml --model-smoke --smoke-batch-size 1 --device cpu
 ```
 
+Four self-contained Kaggle notebooks under `notebooks/high_dimensional/` cover
+FF49/FF100 with Vanilla MLP and Neural CDE conditioning. The Vanilla configs are
+`configs/vanilla_ff49.yaml` and `configs/vanilla_ff100.yaml`: their model, optimizer
+and evaluation settings match `mvp.yaml`, and their data settings match the paired
+CDE configs. Existing KF12 notebooks and configs are unchanged.
+
+Enable Kaggle Internet; enable a GPU before training. Start with the default
+`MODE="smoke"`, then explicitly select `pilot` (two epochs) and `full` (50 epochs).
+Before this feature merges, set `BRANCH="feature/high-dimensional-kaggle"`;
+afterwards the default `main` applies. Run outputs live outside the checkout at
+`/kaggle/working/high_dimensional/{ff49,ff100}/{vanilla,neural_cde}/seed42/`, with
+separate `smoke/`, `pilot/` and `full/` directories. Partial full-run chunks can be
+selected using an absolute `FULL_STOP_AFTER_EPOCH`; resume uses `last.pt`, and
+validation evaluation requires verified completion and the saved best checkpoint.
+The smoke CLI's optional `--report-json` records its checks for these notebooks.
+
+Source ZIP snapshots/hashes, exact config/Git provenance, logs, timing/resources
+and saved metrics accompany the run. Pin the recorded `REVISION` when resuming
+after `main` advances. Uploads default off: opt in with `UPLOAD_ARTIFACTS=True`
+and choose `UPLOAD_STAGE`. Backups refresh the central Kaggle dataset first and
+replace only that stage under the equivalent `high_dimensional/...` namespace,
+preserving unrelated artifacts. FF100 outputs remain exploratory/scalability
+evidence given its 68 validation windows; no new forecasting result is asserted.
+Upload one notebook at a time to avoid concurrent central-dataset version races.
+
 Add another source by returning a canonical panel from `data/sources/`, adding it
 to the small `data/registry.py` dispatch, and selecting its dataset/options and RF
 convention in config. Models, standardization, windows and diffusion run logic

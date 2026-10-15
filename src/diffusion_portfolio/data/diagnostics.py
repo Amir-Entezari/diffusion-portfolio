@@ -9,7 +9,7 @@ from diffusion_portfolio.data import collate_return_batch, make_dataloaders
 from diffusion_portfolio.data.preparation import prepare_return_data
 
 
-def run_data_check(args) -> None:
+def run_data_check(args) -> dict:
     cfg = load_config(args.config)
     datasets, scaler = prepare_return_data(cfg)
     loaders = make_dataloaders(
@@ -22,8 +22,10 @@ def run_data_check(args) -> None:
     target_shape = (batch_size, cfg.data.horizon, n_assets)
     for key in ("history", "history_raw"):
         assert tuple(batch[key].shape) == history_shape
+        assert np.isfinite(batch[key].numpy()).all()
     for key in ("target", "target_raw"):
         assert tuple(batch[key].shape) == target_shape
+        assert np.isfinite(batch[key].numpy()).all()
     assert batch["target_date"].is_monotonic_increasing
     recovered = scaler.inverse_transform(batch["target"].numpy())
     inverse_error = float(np.max(np.abs(recovered - batch["target_raw"].numpy())))
@@ -35,6 +37,19 @@ def run_data_check(args) -> None:
     assert train_dates[-1] <= pd.Timestamp(cfg.data.train_end) < val_dates[0]
     assert val_dates[-1] <= pd.Timestamp(cfg.data.val_end) < test_dates[0]
     assert test_dates[-1] <= pd.Timestamp(cfg.data.sample_end)
+    report = {
+        "dataset": cfg.data.dataset, "seed": cfg.seed,
+        "n_assets": n_assets, "columns": list(scaler.columns),
+        "train_samples": len(datasets.train), "validation_samples": len(datasets.val),
+        "test_samples": len(datasets.test), "max_gap_days": cfg.data.max_gap_days,
+        "history_shape": list(history_shape), "target_shape": list(target_shape),
+        "target_ranges": {
+            name: [str(dates[0].date()), str(dates[-1].date())]
+            for name, dates in (("train", train_dates), ("validation", val_dates), ("test", test_dates))
+        },
+        "standardizer": {"mean": scaler.mean.tolist(), "std": scaler.std.tolist()},
+        "inverse_raw_max_error": inverse_error, "model_smoke": None,
+    }
 
     print("Data smoke test passed")
     print("dataset:", cfg.data.dataset)
@@ -76,6 +91,7 @@ def run_data_check(args) -> None:
         train_batch = collate_return_batch([
             datasets.train[i] for i in range(min(count, len(datasets.train)))
         ])
+        assert all(np.isfinite(train_batch[key].numpy()).all() for key in ("history", "target"))
         output = model.training_loss(
             train_batch["history"].to(device), train_batch["target"].to(device),
         )
@@ -84,4 +100,10 @@ def run_data_check(args) -> None:
         output.loss.backward()
         gradients = [p.grad for p in model.parameters() if p.grad is not None]
         assert gradients and all(torch.isfinite(g).all() for g in gradients)
+        report["model_smoke"] = {
+            "loss": float(output.loss.detach()), "gradients_finite": True,
+            "prediction_shape": list(output.prediction.shape), "device": str(device),
+            "parameter_count": sum(p.numel() for p in model.parameters()),
+        }
         print("Model forward/loss/backward smoke passed; training loss:", float(output.loss.detach()))
+    return report

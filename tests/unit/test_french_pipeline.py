@@ -70,7 +70,13 @@ def test_french_config_pipeline_saved_scaler_and_model_smoke(config_name, fixtur
     raw_config["model"]["channels"] = list(cfg.model.channels)
     config_path = tmp_path / "smoke.yaml"
     config_path.write_text(yaml.safe_dump(raw_config))
-    run_data_check(Namespace(config=config_path, model_smoke=True, smoke_batch_size=2, device="cpu"))
+    smoke_report = run_data_check(Namespace(config=config_path, model_smoke=True, smoke_batch_size=2, device="cpu"))
+    assert smoke_report["n_assets"] == count
+    assert smoke_report["validation_samples"] == len(datasets.val)
+    assert smoke_report["model_smoke"]["gradients_finite"]
+    assert smoke_report["model_smoke"]["prediction_shape"] == [2, count]
+    assert np.isfinite(smoke_report["model_smoke"]["loss"])
+    np.testing.assert_array_equal(smoke_report["standardizer"]["mean"], scaler.mean)
     report = capsys.readouterr().out
     assert "Model forward/loss/backward smoke passed" in report
     assert "largest retained target-date gap:" in report
