@@ -3,6 +3,7 @@ from argparse import Namespace
 from dataclasses import asdict, replace
 import hashlib
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -18,14 +19,76 @@ SCENARIOS = ("synthetic_student_t", "synthetic_mean_reverting", "synthetic_whips
 REFERENCES = json.loads((ROOT / "tests/fixtures/synthetic_market_v1_hashes.json").read_text())
 
 
-@pytest.mark.parametrize("case", REFERENCES["cases"], ids=lambda c: c["scenario"] + ("-custom" if c["options"] else "-default"))
-def test_stage4ab_arrays_match_captured_pre_extension_hashes(case):
-    result = simulate_market(case["scenario"], **case["options"])
+def _assert_stage4ab_compatibility(result, case):
+    """Keep process hashes exact; derived-array bitwise checks require reference NumPy.
+
+    NumPy exp/expm1 implementations can differ by a few ULPs across versions.
+    On other versions, reconstruct those two arrays with scalar libm functions
+    from the hash-verified log returns, keeping the original fixtures untouched.
+    """
     arrays = {"returns": result.returns, "log_returns": result.log_returns, "prices": result.prices,
               "dates": result.dates.values.astype("datetime64[ns]"), "columns": np.asarray(result.columns),
               **result.ground_truth}
     hashes = {name: hashlib.sha256(np.ascontiguousarray(value).tobytes()).hexdigest() for name, value in arrays.items()}
-    assert hashes == case["hashes"], f"Original arrays changed; fixture NumPy={REFERENCES['numpy_version']}, current={np.__version__}"
+    assert hashes.keys() == case["hashes"].keys()
+    reference_numpy = np.__version__ == REFERENCES["numpy_version"]
+    for name, digest in hashes.items():
+        if reference_numpy or name not in {"returns", "prices"}:
+            assert digest == case["hashes"][name], (
+                f"Original {name} changed; fixture NumPy={REFERENCES['numpy_version']}, current={np.__version__}"
+            )
+    if not reference_numpy:
+        assert result.returns.shape == result.prices.shape == result.log_returns.shape
+        assert np.isfinite(result.returns).all() and (result.returns > -1).all()
+        assert np.isfinite(result.prices).all() and (result.prices > 0).all()
+        expected_returns = np.fromiter(map(math.expm1, result.log_returns.flat), dtype=np.float64).reshape(result.log_returns.shape)
+        cumulative = np.cumsum(result.log_returns, axis=0)
+        initial = np.asarray(case["options"].get("initial_prices", 100.0))
+        expected_prices = initial * np.fromiter(map(math.exp, cumulative.flat), dtype=np.float64).reshape(cumulative.shape)
+        eps = np.finfo(np.float64).eps
+        np.testing.assert_allclose(result.returns, expected_returns, rtol=8 * eps, atol=0)
+        # Allow rounding from exp(log(initial) + cumulative) versus initial*exp(cumulative).
+        np.testing.assert_allclose(result.prices, expected_prices, rtol=32 * eps, atol=0)
+
+
+@pytest.mark.parametrize("case", REFERENCES["cases"], ids=lambda c: c["scenario"] + ("-custom" if c["options"] else "-default"))
+def test_stage4ab_arrays_match_captured_pre_extension_hashes(case):
+    result = simulate_market(case["scenario"], **case["options"])
+    _assert_stage4ab_compatibility(result, case)
+
+
+@pytest.mark.parametrize("array_name", ["returns", "prices"])
+def test_reference_numpy_requires_exact_derived_hashes(array_name, monkeypatch):
+    case = REFERENCES["cases"][1]
+    result = simulate_market(case["scenario"], **case["options"])
+    # Exercise the reference-version policy on any installed NumPy; this local
+    # test case does not write or regenerate the on-disk golden fixtures.
+    hashes = {**case["hashes"], **{
+        name: hashlib.sha256(getattr(result, name).tobytes()).hexdigest() for name in ("returns", "prices")
+    }}
+    monkeypatch.setitem(REFERENCES, "numpy_version", np.__version__)
+    local_case = {**case, "hashes": hashes}
+    _assert_stage4ab_compatibility(result, local_case)
+    hashes[array_name] = "0" * 64
+    with pytest.raises(AssertionError, match=f"Original {array_name} changed"):
+        _assert_stage4ab_compatibility(result, local_case)
+
+
+def test_other_numpy_checks_derived_math_and_all_stable_hashes(monkeypatch):
+    case = REFERENCES["cases"][1]
+    result = simulate_market(case["scenario"], **case["options"])
+    monkeypatch.setitem(REFERENCES, "numpy_version", "different-version")
+    # A last-bit change is allowed only for the two library-derived arrays.
+    rounded = replace(result, returns=np.nextafter(result.returns, np.inf),
+                      prices=np.nextafter(result.prices, np.inf))
+    _assert_stage4ab_compatibility(rounded, case)
+    for name in ("returns", "prices"):
+        with pytest.raises(AssertionError):
+            _assert_stage4ab_compatibility(replace(result, **{name: getattr(result, name) * (1 + 1e-10)}), case)
+    for name in case["hashes"].keys() - {"returns", "prices"}:
+        altered = {**case, "hashes": {**case["hashes"], name: "0" * 64}}
+        with pytest.raises(AssertionError, match=f"Original {name} changed"):
+            _assert_stage4ab_compatibility(result, altered)
 
 
 @pytest.mark.parametrize("scenario", SCENARIOS)

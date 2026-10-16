@@ -331,6 +331,10 @@ commands and optional separate observation/ground-truth exports with source SHA.
 The completed 4A/4B notebook is unchanged. Six raw-array hash fixtures captured
 **before** the extension check the original scenarios at default/custom settings;
 the fixture records its NumPy/Pandas environment for bitwise reproduction.
+Log returns, dates, labels and ground-truth arrays always require exact hashes.
+Returns and prices also require exact hashes under the reference NumPy 2.4.0;
+other versions check their mathematical reconstruction to tight float64 tolerances.
+Bitwise verification of these two derived arrays requires the reference NumPy version.
 
 ```python
 from diffusion_portfolio.data.registry import load_return_table
