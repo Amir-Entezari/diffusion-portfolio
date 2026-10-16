@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -61,6 +62,7 @@ def train_one_epoch(
     *,
     device: torch.device,
     gradient_clip_norm: float,
+    progress_prefix: str | None = None,
 ) -> float:
     """Train for one epoch and return sample-weighted mean loss."""
 
@@ -73,8 +75,9 @@ def train_one_epoch(
 
     total_loss = 0.0
     total_samples = 0
+    n_batches = len(loader) if progress_prefix is not None else 0
 
-    for batch in loader:
+    for batch_index, batch in enumerate(loader, start=1):
         history, target = _move_batch(
             batch,
             device,
@@ -114,6 +117,9 @@ def train_one_epoch(
 
         total_samples += batch_size
 
+        if progress_prefix is not None and (batch_index % 10 == 0 or batch_index == n_batches):
+            print(f"{progress_prefix} | Train {batch_index}/{n_batches} batches", flush=True)
+
     if total_samples == 0:
         raise ValueError(
             "Training loader produced no samples"
@@ -132,6 +138,7 @@ def evaluate_diffusion_loss(
     *,
     device: torch.device,
     validation_seed: int,
+    progress_prefix: str | None = None,
 ) -> float:
     """Evaluate DDPM loss using fixed corruption randomness.
 
@@ -167,8 +174,9 @@ def evaluate_diffusion_loss(
 
     total_loss = 0.0
     total_samples = 0
+    n_batches = len(loader) if progress_prefix is not None else 0
 
-    for batch in loader:
+    for batch_index, batch in enumerate(loader, start=1):
         history, target = _move_batch(
             batch,
             device,
@@ -236,6 +244,9 @@ def evaluate_diffusion_loss(
         )
 
         total_samples += batch_size
+
+        if progress_prefix is not None and (batch_index % 10 == 0 or batch_index == n_batches):
+            print(f"{progress_prefix} | Validation {batch_index}/{n_batches} batches", flush=True)
 
     if total_samples == 0:
         raise ValueError(
@@ -434,7 +445,8 @@ def fit_diffusion(
             if verbose:
                 print(
                     "Resuming from epoch "
-                    f"{start_epoch - 1}"
+                    f"{start_epoch - 1}",
+                    flush=True,
                 )
 
     end_epoch = epochs
@@ -449,6 +461,11 @@ def fit_diffusion(
         start_epoch,
         end_epoch + 1,
     ):
+        epoch_label = f"Epoch {epoch:03d}/{epochs:03d}"
+        started = time.perf_counter()
+        if verbose:
+            print(f"{epoch_label} | Starting...", flush=True)
+
         train_loss = train_one_epoch(
             model,
             train_loader,
@@ -457,6 +474,7 @@ def fit_diffusion(
             gradient_clip_norm=(
                 gradient_clip_norm
             ),
+            progress_prefix=epoch_label if verbose else None,
         )
 
         val_loss = evaluate_diffusion_loss(
@@ -466,6 +484,7 @@ def fit_diffusion(
             validation_seed=(
                 validation_seed
             ),
+            progress_prefix=epoch_label if verbose else None,
         )
 
         record = EpochRecord(
@@ -480,9 +499,11 @@ def fit_diffusion(
 
         if verbose:
             print(
-                f"Epoch {epoch:03d}/{epochs:03d} | "
+                f"{epoch_label} | "
                 f"train={train_loss:.6f} | "
-                f"val={val_loss:.6f}"
+                f"val={val_loss:.6f} | "
+                f"elapsed={time.perf_counter() - started:.1f}s",
+                flush=True,
             )
 
         if val_loss < best_val_loss:

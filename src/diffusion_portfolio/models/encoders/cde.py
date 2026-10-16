@@ -475,6 +475,11 @@ class NeuralCDE(nn.Module):
         initial_state: Tensor,
         output_times: Tensor,
     ) -> Tensor:
+        # TODO (performance/research): Benchmark dense sensitivity matrices and
+        # RK4 integration cost on FF49/FF100. Profile spline-coefficient caching,
+        # fewer RK4 substeps, low-dimensional controls, and low-rank sensitivity.
+        # Benchmark and validate any change separately against the existing
+        # KF12/FF49 formulation before adoption.
         solver_kwargs = {}
 
         if self.solver == "rk4":
