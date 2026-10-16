@@ -73,7 +73,7 @@ def test_interactive_structure_syntax_and_matched_configuration(notebook):
         assert not any(term in cell.source for term in (
             "subprocess.run", "subprocess.Popen", "%%bash", "%%capture",
         ))
-        # Saved executions are research history; nbformat validates their schema.
+        assert cell.outputs == [] and cell.execution_count is None
         assert "n_assets=12" not in cell.source
 
     order = list(cells)

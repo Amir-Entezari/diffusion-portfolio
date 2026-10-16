@@ -135,7 +135,12 @@ def test_synthetic_demo_notebook_format_and_syntax():
     nbformat.validate(book)
     cells = {c.id: c for c in book.cells}
     reference = nbformat.read(ROOT / "notebooks/high_dimensional/ff49_vanilla.ipynb", as_version=4)
-    assert cells["github-sync"].source == next(c.source for c in reference.cells if c.id == "github-sync")
+    sync = cells["github-sync"].source
+    assert 'BRANCH = "feature/synthetic-market"' in sync
+    # Preserve the established synchronization steps while allowing distinct branches.
+    assert sync.replace('BRANCH = "feature/synthetic-market"', 'BRANCH = "feature/high-dimensional-kaggle"') == next(
+        c.source for c in reference.cells if c.id == "github-sync"
+    )
     for cell in book.cells:
         if cell.cell_type == "code":
             compile(transformer.transform_cell(cell.source), cell.id, "exec")
@@ -156,3 +161,43 @@ def test_diagnostics_handle_unvisited_regime_and_undefined_correlation():
     assert report["summary"][0]["expected_duration_days"] is None
     assert report["moments"]["normal"]["configured_correlation"] == [[None, None], [None, None]]
     json.dumps(report, allow_nan=False)
+
+
+@pytest.mark.parametrize("revision", ["a" * 40, "fatal: not a repository"])
+def test_optional_notebook_export_separates_observations_and_records_revision(tmp_path, revision):
+    nbformat = pytest.importorskip("nbformat")
+    transformer = pytest.importorskip("IPython.core.inputtransformer2").TransformerManager()
+    book = nbformat.read(ROOT / "notebooks/synthetic/synthetic_market_validation.ipynb", as_version=4)
+    source = next(c.source for c in book.cells if c.id == "optional-export")
+    scenario = "synthetic_regime_jump"
+    result = simulate_market(scenario, n_assets=3, n_observations=24)
+    directory = tmp_path / scenario
+    directory.mkdir()
+
+    class Shell:
+        def getoutput(self, command):
+            assert command == "git rev-parse HEAD"
+            return [revision]  # Mock output only; never execute a Git command.
+
+    namespace = {"get_ipython": Shell, "markets": {scenario: result}, "OUT": tmp_path,
+                 "np": np, "json": json}
+    if revision.startswith("fatal:"):
+        with pytest.raises(AssertionError, match="Invalid source revision"):
+            exec(transformer.transform_cell(source), namespace)
+        assert not list(directory.iterdir())
+        return
+    exec(transformer.transform_cell(source), namespace)
+    with np.load(directory / "observations.npz", allow_pickle=False) as observations:
+        assert set(observations.files) == {"dates", "columns", "returns", "prices"}
+        np.testing.assert_array_equal(observations["returns"], result.returns)
+        np.testing.assert_array_equal(observations["prices"], result.prices)
+        np.testing.assert_array_equal(observations["dates"], result.dates.values)
+        assert tuple(observations["columns"]) == result.columns
+    with np.load(directory / "ground_truth.npz", allow_pickle=False) as truth:
+        assert set(truth.files) == {"dates", *result.ground_truth}
+        np.testing.assert_array_equal(truth["dates"], result.dates.values)
+        for name, values in result.ground_truth.items():
+            np.testing.assert_array_equal(truth[name], values)
+    parameters = json.loads((directory / "parameters.json").read_text())
+    assert parameters == {**result.parameters, "source_revision": revision}
+    assert "source_revision" not in result.parameters
