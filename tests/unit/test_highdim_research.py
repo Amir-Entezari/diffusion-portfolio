@@ -328,6 +328,15 @@ def test_notebook_schema_syntax_cli_arguments_and_isolation(research_book, monke
     nbformat.validate(book)
     reference = nbformat.read(ROOT / "notebooks/high_dimensional/ff49_neural_cde.ipynb", as_version=4)
     assert cells["github-sync"].source == next(c.source for c in reference.cells if c.id == "github-sync")
+    if path.stem.endswith("_tda"):
+        assert cells["dependencies"].source == "!pip install -q -e '.[dev,research]'"
+        order = [cell.id for cell in book.cells]
+        assert order.index("dependencies") < order.index("topology-dependency") < order.index("tests")
+        assert order.index("topology-dependency") < order.index("feature-smoke")
+        with monkeypatch.context() as missing_gudhi:
+            missing_gudhi.setitem(sys.modules, "gudhi", None)
+            with pytest.raises(ModuleNotFoundError, match="gudhi"):
+                exec(cells["topology-dependency"].source, {})
     for module, name in ((multiseed, "run_multiseed"), (probes, "run_probe"), (routing, "run_router"),
                          (precompute, "precompute_features"), (runs, "train_feature_ablation"),
                          (forecasts, "evaluate_diffusion"), (diagnostics, "run_data_check")):
