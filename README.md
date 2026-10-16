@@ -16,10 +16,9 @@ are included.
 Return sources expose `ReturnTable(dates, returns, columns)` with arithmetic decimal returns
 of shape `[time, assets]`; add a loader to the small `data/registry.py` dispatch
 and select it in the data config. Encoders and diffusion builders receive the
-asset count from that panel. Existing synthetic code is experimental: no generator
-is selected, validated or integrated into this pipeline. A future adapter must
-explicitly convert any log-return outputs to arithmetic decimal returns before
-exposing a panel. Baseline-specific objectives and adapters belong together
+asset count from that panel. Controlled synthetic factor markets use the same
+pipeline; the older experimental LOB/jump generator remains isolated and unused
+by source dispatch. Baseline-specific objectives and adapters belong together
 under `baselines/`; reusable experiment functions belong in the package.
 
 ## Install and test
@@ -46,7 +45,7 @@ Keep those archives alongside run artifacts: French can revise historical data.
 seeds, optimizer and calendar split settings from `configs/cde.yaml`.
 `data.subtract_risk_free: true` subtracts exactly aligned daily French RF before
 train-only normalization. It defaults to `true`, preserving KF12 behavior. A
-future arithmetic-return source can set it to `false`; RF is then never loaded.
+synthetic arithmetic-return source sets it to `false`; RF is then never loaded.
 Source adapters must not return log returns or silently pre-subtract RF.
 
 `data.source_options` forwards ordinary keyword arguments to the selected loader,
@@ -216,6 +215,69 @@ to the small `data/registry.py` dispatch, and selecting its dataset/options and 
 convention in config. Models, standardization, windows and diffusion run logic
 do not need dataset-specific changes. Saved scalers still validate asset labels
 and ordering; checkpoints and scalers from different asset panels are not interchangeable.
+
+## Controlled synthetic markets
+
+`synthetic_gaussian`, `synthetic_regime`, and `synthetic_regime_jump` load through
+the same `load_return_table` / train-only normalization / causal window pipeline.
+Matching `configs/<dataset>.yaml` files retain Vanilla diffusion settings and use
+`subtract_risk_free: false`. No forecasting models are part of the simulator.
+The [demonstration notebook](notebooks/synthetic/synthetic_market_validation.ipynb)
+generates observations, saves resolved parameters and training-only diagnostics,
+checks the shared pipeline, and provides separate CPU smoke / optional pilot cells.
+
+The specified construction is
+`x = mu[z] + sigma[z] * (B[z] @ f + D[z] @ epsilon) - J * a * b[z]`, with independent
+standard Gaussian factor/idiosyncratic shocks. `x` is a **daily log return**;
+`ReturnTable` receives **arithmetic decimal** `expm1(x)`. The no-jump covariance is
+`sigma[z]**2 * (B[z] @ B[z].T + diag(d[z]**2))`, PSD by construction. Fixed jumps
+add conditional mean `-p*a*b` and covariance `p*(1-p)*a**2*outer(b,b)`.
+Prices are `initial_price * exp(cumsum(x))`; the first price is post-return,
+with no artificial zero observation or price reset. Unrepresentable returns/prices
+raise an error; they are never clipped. Prices can be omitted for long simulations.
+"Gaussian" refers to log returns; the arithmetic returns have the transformed law.
+
+Illustrative daily assumptions: normal drift 0.0002, first-factor loadings
+0.004–0.008 (additional deterministic cosine exposures), idiosyncratic standard
+deviation 0.01, multiplier 1. Stress uses drift -0.0004, doubled factor loadings,
+idio 0.0075 and multiplier 1.5. Relative factor/idio exposure changes correlation;
+scaling volatility alone does not. Markov rows `[[.99,.01],[.04,.96]]` imply
+stationary occupancy 80%/20% and mean durations 100/25 weekdays. Initial state
+defaults to that stationary distribution. Jump probabilities are **daily Bernoulli
+probabilities**, 0.002/0.03, with fixed positive log magnitude 0.04 and nonnegative
+asset exposures (default one); these are not Poisson intensities or fitted estimates.
+A common negative jump term need not make every net observed return negative.
+
+The 8,000 business weekdays span 1990-01-01–2020-08-28, with cutoffs derived at
+observations 5,000 (2009-02-27) and 6,500 (2014-11-28). Usable windows are
+**4,940 train / 1,500 validation / 1,500 held-out**. Only training dates enter
+notebook diagnostics; held-out availability is counted, never used for selection.
+Ground truth (regimes, jump events/magnitudes, volatility states) stays separate
+from the ordinary source panel and model inputs. The source seed in `source_options`
+is independent of the training seed. Four isolated PCG64 streams preserve prefixes
+when extending sample length; save resolved parameters, simulator/NumPy versions
+and code revision for exact reproduction. See NumPy's
+[RNG version policy](https://numpy.org/doc/stable/reference/random/generator.html).
+
+A stronger systemic-stress setting uses the **same** regime engine: for example
+`n_factors: 1`, `factor_loadings: [[[0.01]], [[0.02]]]`,
+`idiosyncratic_vol: [[0.006], [0.004]]`, `volatility_multipliers: [1.5, 2.5]` in
+`source_options`. Scalars/asset vectors broadcast; per-regime drift/idio arrays
+use `[regimes, assets]` (or `[regimes, 1]`). No separate stress model is introduced.
+
+```bash
+python scripts/data_smoke_test.py --config configs/synthetic_gaussian.yaml --model-smoke --device cpu
+python scripts/data_smoke_test.py --config configs/synthetic_regime.yaml
+python scripts/data_smoke_test.py --config configs/synthetic_regime_jump.yaml
+```
+
+Monte Carlo tests check analytical log moments, transition/duration uncertainty,
+jump rates, return/price consistency and leakage. These checks validate a specified
+simulator, **not empirical market realism**. Regime/jump mixtures are not
+unconditionally Gaussian. The weekday calendar omits exchange holidays; there is
+no stochastic-volatility recursion. Future 4C distributions/scenarios and separate
+topology fixtures, 4D irregular/intraday/event simulation, and broader downstream
+evaluation are unimplemented and require separate scientific decisions.
 
 ## Current experiments
 
