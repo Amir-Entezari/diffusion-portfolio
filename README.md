@@ -275,9 +275,78 @@ Monte Carlo tests check analytical log moments, transition/duration uncertainty,
 jump rates, return/price consistency and leakage. These checks validate a specified
 simulator, **not empirical market realism**. Regime/jump mixtures are not
 unconditionally Gaussian. The weekday calendar omits exchange holidays; there is
-no stochastic-volatility recursion. Future 4C distributions/scenarios and separate
-topology fixtures, 4D irregular/intraday/event simulation, and broader downstream
-evaluation are unimplemented and require separate scientific decisions.
+no stochastic-volatility recursion. Separate mathematical topology fixtures,
+alpha-stable innovations, 4D irregular/intraday/event simulation and broader
+downstream evaluation remain unimplemented and require separate scientific decisions.
+
+### Extended synthetic stress scenarios (4C)
+
+Three additional sources/configs use the **same** factor simulator, calendar,
+partitions, return conversion and Vanilla training settings. Define the centered
+Gaussian driver `v[t] = sigma[z[t]] * (B[z[t]] @ f[t] + D[z[t]] @ epsilon[t])`,
+with covariance `Sigma[z]` as above. All coefficients are daily log-return units;
+AR coefficients and Student-t scales are dimensionless. No new scenario has jumps.
+
+- `synthetic_student_t`: `x[t] = mu + v[t] * sqrt((nu-2)/W[t])`, with **one**
+  independent `W[t] ~ chi-square(nu)` shared by all factor/idiosyncratic shocks
+  that day. The default is `nu=8`; `degrees_of_freedom` must be finite and `>4`.
+  Log covariance stays `Sigma`, and nondegenerate marginal log excess kurtosis is `6/(nu-4)`.
+  Variance exists for `nu>2`, fourth moments for `nu>4`; eighth moments need
+  `nu>8`, so kurtosis can converge slowly at the default. A fifth isolated RNG
+  child supplies scales; existing stream consumption is unchanged. This is the
+  covariance-standardized elliptical [Student-t distribution](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.t.html),
+  not independent asset-wise rescaling. **Arithmetic returns `expm1(t)` have no
+  finite positive population moments** because t has polynomial upper tails,
+  despite finite observed samples; moment
+  comparisons and tail thresholds explicitly use log returns.
+- `synthetic_mean_reverting`: `y[0]=v[0]`, then
+  `y[t]=phi*y[t-1]+sqrt(1-phi**2)*v[t]`, `x[t]=mu+y[t]`. Fixed Gaussian regime,
+  default `phi=0.4`, strict `abs(phi)<1`. Stationary Gaussian initialization gives
+  mean `mu`, covariance `Sigma`, and lag-k log covariance `phi**k * Sigma`.
+  The actual AR shock covariance is `(1-phi**2)*Sigma`. This is return mean
+  reversion, not an OU price-level model; prices continue compounding.
+  Legacy `conditional_log_*` metadata conditions on regime only; it describes
+  marginal moments, not the conditional forecast given observed history.
+- `synthetic_whipsaw`: `y[t]=phi[z[t]]*y[t-1]+sqrt(1-phi[z[t]]**2)*v[t]`,
+  `x[t]=mu[z[t]]+y[t]`. Default normal/whipsaw coefficients are `[0.1,-0.65]`,
+  with the existing 4B Markov/driver settings. Both coefficients must have
+  magnitude below one, and whipsaw must be negative and below normal. Initial
+  deviation is Gaussian under the initial state, **not the full switching
+  stationary law**. Driver and actual shock covariances are recorded separately;
+  resulting regime-conditional return covariance is `None`, never silently
+  equated to `Sigma[z]`. Empirical lag/reversal pairs stay within uninterrupted
+  spells, including intermediate dates. Conditional AR slopes do not imply
+  exact stationary correlations during switching. Raw sign reversals and
+  reversals about the known log mean are reported separately.
+
+`innovation_distribution`, `degrees_of_freedom` and `ar_coefficients` are explicit
+source options. Only the combinations above are enabled; unsupported heavy-tail
+AR/jump mixtures fail. Ground truth remains separate from model inputs. Finite
+threshold co-exceedances are not asymptotic tail-dependence estimates. These
+checks establish specified mechanisms, not empirical realism or forecasting gains.
+
+The [4C Kaggle notebook](notebooks/synthetic/synthetic_market_stage4c_validation.ipynb)
+uses `feature/synthetic-market`, training-only diagnostics, direct CPU smoke
+commands and optional separate observation/ground-truth exports with source SHA.
+The completed 4A/4B notebook is unchanged. Six raw-array hash fixtures captured
+**before** the extension check the original scenarios at default/custom settings;
+the fixture records its NumPy/Pandas environment for bitwise reproduction.
+
+```python
+from diffusion_portfolio.data.registry import load_return_table
+table = load_return_table("synthetic_student_t", degrees_of_freedom=8)
+table = load_return_table("synthetic_mean_reverting", ar_coefficients=0.4)
+table = load_return_table("synthetic_whipsaw", ar_coefficients=[0.1, -0.65])
+```
+
+```bash
+python scripts/data_smoke_test.py --config configs/synthetic_student_t.yaml --model-smoke --device cpu
+python scripts/data_smoke_test.py --config configs/synthetic_mean_reverting.yaml --model-smoke --device cpu
+python scripts/data_smoke_test.py --config configs/synthetic_whipsaw.yaml --model-smoke --device cpu
+pytest -q tests/unit/test_synthetic_market_stage4c.py tests/unit/test_synthetic_market.py tests/unit/test_synthetic_market_pipeline.py
+python -m compileall src scripts
+pytest -q
+```
 
 ## Current experiments
 

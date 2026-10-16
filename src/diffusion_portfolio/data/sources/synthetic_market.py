@@ -43,6 +43,7 @@ def simulate_market(
     factor_loadings=None, idiosyncratic_vol=None, volatility_multipliers=None,
     transition_matrix=None, initial_regime="stationary", jump_probabilities=None,
     jump_magnitude=.04, jump_exposures=1.0,
+    innovation_distribution=None, degrees_of_freedom=None, ar_coefficients=None,
     initial_prices=100.0, include_prices=True,
 ) -> SyntheticMarketResult:
     """Simulate one continuous trajectory using explicit, illustrative parameters.
@@ -59,8 +60,19 @@ def simulate_market(
     Event magnitude is fixed and strictly positive in log-return units; its
     negative impact is magnitude * nonnegative asset exposure. All innovations,
     transitions and event uniforms use independent streams. No price resets.
+
+    Student-t uses ONE additional chi-square scale per date for the entire
+    factor/idiosyncratic vector (nu > 4). Its log moments, not arithmetic-return
+    moments, are finite. Fixed-regime Gaussian AR starts at y[0] = u[0], already
+    N(0, Sigma); thereafter y[t] = phi*y[t-1] + sqrt(1-phi**2)*u[t]. Switching
+    AR uses the current state's phi and driver covariance but does NOT preserve
+    Sigma as its regime-conditional return covariance. Other mechanism mixtures
+    are deliberately unsupported until separately validated.
+    The legacy conditional_log_* fields condition on regime only, not history;
+    AR innovation_covariances describe the one-step shock conditional on state.
     """
-    if scenario not in {"synthetic_gaussian", "synthetic_regime", "synthetic_regime_jump"}:
+    original = scenario in {"synthetic_gaussian", "synthetic_regime", "synthetic_regime_jump"}
+    if not original and scenario not in {"synthetic_student_t", "synthetic_mean_reverting", "synthetic_whipsaw"}:
         raise ValueError(f"Unknown synthetic market scenario: {scenario}")
     for name, value in (("n_assets", n_assets), ("n_observations", n_observations),
                         ("n_factors", n_factors), ("seed", seed)):
@@ -70,7 +82,26 @@ def simulate_market(
     if pd.isna(start) or start.tz is not None or start != start.normalize() or start.dayofweek >= 5:
         raise ValueError("start_date must be a timezone-naive weekday at midnight")
     dates = pd.bdate_range(start, periods=n_observations)
-    n_regimes = 1 if scenario == "synthetic_gaussian" else 2
+    n_regimes = 2 if scenario in {"synthetic_regime", "synthetic_regime_jump", "synthetic_whipsaw"} else 1
+    distribution = "student_t" if scenario == "synthetic_student_t" else "gaussian"
+    if innovation_distribution is not None and innovation_distribution != distribution:
+        raise ValueError(f"{scenario} requires {distribution} innovations; mixed mechanisms are unsupported")
+    if distribution == "student_t":
+        nu = 8.0 if degrees_of_freedom is None else _array(degrees_of_freedom, (), "degrees_of_freedom").item()
+        if isinstance(degrees_of_freedom, bool) or nu <= 4:
+            raise ValueError("degrees_of_freedom must be finite and > 4")
+    elif degrees_of_freedom is not None:
+        raise ValueError("degrees_of_freedom is only supported for synthetic_student_t")
+    else:
+        nu = None
+    default_ar = .4 if scenario == "synthetic_mean_reverting" else ([.1, -.65] if scenario == "synthetic_whipsaw" else 0.)
+    phi = _array(default_ar if ar_coefficients is None else ar_coefficients, (n_regimes,), "ar_coefficients")
+    if np.any(np.abs(phi) >= 1):
+        raise ValueError("ar_coefficients must satisfy -1 < phi < 1")
+    if scenario not in {"synthetic_mean_reverting", "synthetic_whipsaw"} and np.any(phi != 0):
+        raise ValueError("AR dynamics are only supported for Gaussian mean-reverting/whipsaw scenarios")
+    if scenario == "synthetic_whipsaw" and not phi[1] < min(0, phi[0]):
+        raise ValueError("The whipsaw coefficient must be negative and below the normal coefficient")
     if factor_loadings is None:
         base = np.empty((n_assets, n_factors))
         base[:, 0] = np.linspace(.004, .008, n_assets)
@@ -119,6 +150,7 @@ def simulate_market(
         loadings @ loadings.transpose(0, 2, 1)
         + np.eye(n_assets)[None] * idio[:, :, None] ** 2
     )
+    # Keep the original four children and their consumption unchanged.
     state_rng, factor_rng, idio_rng, jump_rng = [
         np.random.Generator(np.random.PCG64(s)) for s in np.random.SeedSequence(seed).spawn(4)
     ]
@@ -134,9 +166,22 @@ def simulate_market(
         states[t] = np.searchsorted(cumulative[states[t - 1]], uniform, side="right")
     factors = factor_rng.standard_normal((n_observations, n_factors))
     epsilon = idio_rng.standard_normal((n_observations, n_assets))
-    log_returns = mu[states] + sigma[states, None] * (
+    innovations = sigma[states, None] * (
         np.einsum("tnk,tk->tn", loadings[states], factors) + idio[states] * epsilon
     )
+    scales = None
+    if distribution == "student_t":
+        scale_rng = np.random.Generator(np.random.PCG64(np.random.SeedSequence(seed, spawn_key=(4,))))
+        scales = np.sqrt((nu - 2) / scale_rng.chisquare(nu, size=n_observations))
+        innovations *= scales[:, None]
+    if np.any(phi != 0):
+        # y[0] uses the first Gaussian driver, independent of all later drivers.
+        deviations = innovations.copy()
+        for t in range(1, n_observations):
+            coefficient = phi[states[t]]
+            deviations[t] = coefficient * deviations[t - 1] + np.sqrt(1 - coefficient ** 2) * innovations[t]
+        innovations = deviations
+    log_returns = mu[states] + innovations
     jumps = jump_rng.random(n_observations) < probabilities[states]
     magnitudes = magnitude * jumps
     log_returns -= magnitudes[:, None] * exposures[states]
@@ -173,10 +218,29 @@ def simulate_market(
                   "jump_probabilities": "per business-day Bernoulli probability", "jump_magnitude": "log return",
                   "returns": "arithmetic decimal", "prices": "same arbitrary units as initial_prices"},
     }
+    ground_truth = {"regimes": states, "jump_events": jumps, "jump_magnitudes": magnitudes,
+                    "volatility_multipliers": sigma[states]}
+    if not original:
+        switching_ar = scenario == "synthetic_whipsaw"
+        parameters.update(
+            simulator_version=2, innovation_distribution=distribution, degrees_of_freedom=nu,
+            ar_coefficients=phi.tolist(), driver_covariances=covariance.tolist(),
+            innovation_covariances=((1 - phi ** 2)[:, None, None] * covariance).tolist(),
+            covariance_interpretation="switching_ar_not_analytic" if switching_ar else "fixed_regime_marginal",
+            initialization="Gaussian driver at initial state; switching joint law is not stationary" if switching_ar
+                           else ("stationary Gaussian return deviations" if scenario == "synthetic_mean_reverting" else "iid"),
+            theoretical_excess_kurtosis=6 / (nu - 4) if nu is not None else (None if switching_ar else 0.),
+        )
+        if switching_ar:
+            parameters["regime_names"] = ["normal", "whipsaw"]
+            parameters["conditional_log_covariance"] = None
+        if scales is not None:
+            ground_truth["student_t_scales"] = scales
+            parameters["rng"] += "; Student-t scale child: spawn_key=(4,)"
+        ground_truth["ar_coefficients"] = phi[states]
     return SyntheticMarketResult(
         dates, tuple(f"asset_{i + 1:03d}" for i in range(n_assets)), returns, log_returns, prices,
-        {"regimes": states, "jump_events": jumps, "jump_magnitudes": magnitudes,
-         "volatility_multipliers": sigma[states]},
+        ground_truth,
         parameters,
     )
 

@@ -1,0 +1,54 @@
+# Controlled log-return stress mechanism; illustrative assumptions, not fitted estimates.
+# Same calendar, observation splits, Vanilla architecture and optimizer as 4A/4B.
+# Source seed is independent of model-training seed. No RF subtraction or jumps.
+# One shared chi-square scale/date; nu > 4. Log moments are finite; arithmetic exp(t) moments are not.
+data:
+  dataset: synthetic_student_t
+  frequency: daily
+  horizon: 1
+  lookback: 60
+  max_gap_days: 7
+  return_scaling: train_zscore
+  sample_end: '2020-08-28'
+  sample_start: '1990-01-01'
+  source_options:
+    n_assets: 12
+    n_factors: 2
+    n_observations: 8000
+    seed: 42
+    start_date: '1990-01-01'
+    innovation_distribution: student_t
+    degrees_of_freedom: 8
+  subtract_risk_free: false
+  train_end: '2009-02-27'
+  val_end: '2014-11-28'
+evaluation:
+  n_scenarios: 256
+  report_distribution_metrics: true
+  report_portfolio_metrics: true
+model:
+  channels:
+  - 32
+  - 64
+  - 128
+  condition_dim: 128
+  diffusion_steps: 100
+  history_hidden_dim: 256
+  n_res_blocks: 1
+  prediction_type: v_prediction
+  schedule: cosine
+  time_embed_dim: 128
+  type: conditional_diffusion
+portfolio:
+  allow_short: false
+  annualization_factor: 252
+  optimizer: mean_variance
+  transaction_cost_bps: 10.0
+seed: 42
+training:
+  batch_size: 128
+  epochs: 50
+  gradient_clip_norm: 1.0
+  learning_rate: 0.0003
+  validation_seed: 12345
+  weight_decay: 1.0e-05

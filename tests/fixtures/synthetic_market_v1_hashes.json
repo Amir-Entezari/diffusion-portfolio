@@ -1,0 +1,164 @@
+{
+  "description": "Captured from the unmodified 4A/4B simulator before Stage 4C. Do not regenerate without compatibility review. Raw array bytes, dates in ns.",
+  "source_sha256": "e8281b98507845b4339e00d9b0e3aeaabda9c1fc48efc0e4b76544c59711bf8a",
+  "numpy_version": "2.4.0",
+  "pandas_version": "2.3.3",
+  "cases": [
+    {
+      "scenario": "synthetic_gaussian",
+      "options": {},
+      "hashes": {
+        "returns": "bf60b941825cbc0ec57d9f8fbd64abe5440d856ce6b5a325500cd7a382ea38b5",
+        "log_returns": "eb3461433b7b8ffacd4dee69a80f6446057b3542d43538f7def6fd6313925a81",
+        "prices": "f18a9a7a5190db0a471cc2e8b3a7a6f62a70b22d8cc3df5764762327641994ed",
+        "dates": "e8f2fdd24f7534050b493f159e22630932c9e320bbf4868add3a735080e7bf53",
+        "columns": "90560b6e30e98c419e6ecde4ea6afcd18d88d10091efd1f110e26793fa380d68",
+        "regimes": "4f7988030a00d082fe445e00a2ac5dab502300ff1b80e8592dd569867b60ef74",
+        "jump_events": "668946bab9868b28489bb906205ee1026045c8bcd3ca62a1bdf733c65491351b",
+        "jump_magnitudes": "4f7988030a00d082fe445e00a2ac5dab502300ff1b80e8592dd569867b60ef74",
+        "volatility_multipliers": "4f1914a4df3b24d67f070eec13d11e185846d7cdebe8504068ba611375ff16ce"
+      }
+    },
+    {
+      "scenario": "synthetic_gaussian",
+      "options": {
+        "n_assets": 5,
+        "n_factors": 3,
+        "n_observations": 160,
+        "seed": 17,
+        "drift": 0.0001,
+        "idiosyncratic_vol": 0.008,
+        "volatility_multipliers": 1.2,
+        "jump_exposures": [
+          0,
+          0.5,
+          1,
+          1.5,
+          2
+        ],
+        "initial_prices": [
+          50,
+          75,
+          100,
+          125,
+          150
+        ]
+      },
+      "hashes": {
+        "returns": "6c7d41d7459aec6f7636d84d70cb2489ae43a7ad36e5b8ba406a65eafbf471fc",
+        "log_returns": "f053b6784a12f306be8e3c413de4900c99451715e30349d38085a1471f464550",
+        "prices": "1e8a128b745f577e34540b7b68aef0d5ed68313550b739f3397530932b27096c",
+        "dates": "9059f95fed64bd9050e5a08f8a1ec24cd730199363417c67c263dadcdedf66c5",
+        "columns": "0849f0c784a59081939efaa7d3fdae09f5ad3733005a2dcd9f8c8573d059b22a",
+        "regimes": "bfe492baf731a0dbf6e1e050f5bc3fe8c1b049383194dcdf82f023bfa409f462",
+        "jump_events": "b393978842a0fa3d3e1470196f098f473f9678e72463cb65ec4ab5581856c2e4",
+        "jump_magnitudes": "bfe492baf731a0dbf6e1e050f5bc3fe8c1b049383194dcdf82f023bfa409f462",
+        "volatility_multipliers": "dc596ba1f3ced181c327e8a16f4f5fc5eff12d640f7dded0b03b54c77761a0c6"
+      }
+    },
+    {
+      "scenario": "synthetic_regime",
+      "options": {},
+      "hashes": {
+        "returns": "082c21659a544dc39c61e44b095b2a76a9e216e4ea93ec3f6ef01b247ddb73dd",
+        "log_returns": "bc07792748fe4e5a69d63ebe0580bb075b2fc3a78cbd05982321038e763a9565",
+        "prices": "340f9d9c196891d1beafdd3797ab7d6eef511ac643462468a499cbd0116c694b",
+        "dates": "e8f2fdd24f7534050b493f159e22630932c9e320bbf4868add3a735080e7bf53",
+        "columns": "90560b6e30e98c419e6ecde4ea6afcd18d88d10091efd1f110e26793fa380d68",
+        "regimes": "17f9322b818821eb6e1e55daf615aa1aa915dc4e24e25ceff9dd2d001c1cdc42",
+        "jump_events": "668946bab9868b28489bb906205ee1026045c8bcd3ca62a1bdf733c65491351b",
+        "jump_magnitudes": "4f7988030a00d082fe445e00a2ac5dab502300ff1b80e8592dd569867b60ef74",
+        "volatility_multipliers": "28dd7c05f3036decff39bafaa903d09c2102709257c97c41caaa40e314674375"
+      }
+    },
+    {
+      "scenario": "synthetic_regime",
+      "options": {
+        "n_assets": 5,
+        "n_factors": 3,
+        "n_observations": 160,
+        "seed": 17,
+        "drift": 0.0001,
+        "idiosyncratic_vol": 0.008,
+        "volatility_multipliers": 1.2,
+        "jump_exposures": [
+          0,
+          0.5,
+          1,
+          1.5,
+          2
+        ],
+        "initial_prices": [
+          50,
+          75,
+          100,
+          125,
+          150
+        ]
+      },
+      "hashes": {
+        "returns": "6c7d41d7459aec6f7636d84d70cb2489ae43a7ad36e5b8ba406a65eafbf471fc",
+        "log_returns": "f053b6784a12f306be8e3c413de4900c99451715e30349d38085a1471f464550",
+        "prices": "1e8a128b745f577e34540b7b68aef0d5ed68313550b739f3397530932b27096c",
+        "dates": "9059f95fed64bd9050e5a08f8a1ec24cd730199363417c67c263dadcdedf66c5",
+        "columns": "0849f0c784a59081939efaa7d3fdae09f5ad3733005a2dcd9f8c8573d059b22a",
+        "regimes": "bfe492baf731a0dbf6e1e050f5bc3fe8c1b049383194dcdf82f023bfa409f462",
+        "jump_events": "b393978842a0fa3d3e1470196f098f473f9678e72463cb65ec4ab5581856c2e4",
+        "jump_magnitudes": "bfe492baf731a0dbf6e1e050f5bc3fe8c1b049383194dcdf82f023bfa409f462",
+        "volatility_multipliers": "dc596ba1f3ced181c327e8a16f4f5fc5eff12d640f7dded0b03b54c77761a0c6"
+      }
+    },
+    {
+      "scenario": "synthetic_regime_jump",
+      "options": {},
+      "hashes": {
+        "returns": "b62ec7f9805fb903ca18925347d5a8b22a7572ebfae32f9905f21558936d2c40",
+        "log_returns": "b8d06300102d45e57287ea444cf4f72ba2657f11723e31d67e1f4183a521b205",
+        "prices": "7843a735aa3a335e80c5018aa1fd56a28d7208fb71d2b6747c935063adfb6298",
+        "dates": "e8f2fdd24f7534050b493f159e22630932c9e320bbf4868add3a735080e7bf53",
+        "columns": "90560b6e30e98c419e6ecde4ea6afcd18d88d10091efd1f110e26793fa380d68",
+        "regimes": "17f9322b818821eb6e1e55daf615aa1aa915dc4e24e25ceff9dd2d001c1cdc42",
+        "jump_events": "cd6a374435dbcbbaf87a520ac2416825b25a5ea3f93f1df81ac96a8ff3a08543",
+        "jump_magnitudes": "709c4cbb477014faa7e0f5bd30afacde73851fd886a79d7e4080052e4bfdf74c",
+        "volatility_multipliers": "28dd7c05f3036decff39bafaa903d09c2102709257c97c41caaa40e314674375"
+      }
+    },
+    {
+      "scenario": "synthetic_regime_jump",
+      "options": {
+        "n_assets": 5,
+        "n_factors": 3,
+        "n_observations": 160,
+        "seed": 17,
+        "drift": 0.0001,
+        "idiosyncratic_vol": 0.008,
+        "volatility_multipliers": 1.2,
+        "jump_exposures": [
+          0,
+          0.5,
+          1,
+          1.5,
+          2
+        ],
+        "initial_prices": [
+          50,
+          75,
+          100,
+          125,
+          150
+        ]
+      },
+      "hashes": {
+        "returns": "6c7d41d7459aec6f7636d84d70cb2489ae43a7ad36e5b8ba406a65eafbf471fc",
+        "log_returns": "f053b6784a12f306be8e3c413de4900c99451715e30349d38085a1471f464550",
+        "prices": "1e8a128b745f577e34540b7b68aef0d5ed68313550b739f3397530932b27096c",
+        "dates": "9059f95fed64bd9050e5a08f8a1ec24cd730199363417c67c263dadcdedf66c5",
+        "columns": "0849f0c784a59081939efaa7d3fdae09f5ad3733005a2dcd9f8c8573d059b22a",
+        "regimes": "bfe492baf731a0dbf6e1e050f5bc3fe8c1b049383194dcdf82f023bfa409f462",
+        "jump_events": "b393978842a0fa3d3e1470196f098f473f9678e72463cb65ec4ab5581856c2e4",
+        "jump_magnitudes": "bfe492baf731a0dbf6e1e050f5bc3fe8c1b049383194dcdf82f023bfa409f462",
+        "volatility_multipliers": "dc596ba1f3ced181c327e8a16f4f5fc5eff12d640f7dded0b03b54c77761a0c6"
+      }
+    }
+  ]
+}

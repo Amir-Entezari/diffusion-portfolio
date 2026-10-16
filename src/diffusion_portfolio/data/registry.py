@@ -23,6 +23,9 @@ def load_return_table(dataset_name: str, **kwargs) -> ReturnTable:
         "synthetic_gaussian": partial(load_synthetic_market, "synthetic_gaussian"),
         "synthetic_regime": partial(load_synthetic_market, "synthetic_regime"),
         "synthetic_regime_jump": partial(load_synthetic_market, "synthetic_regime_jump"),
+        "synthetic_student_t": partial(load_synthetic_market, "synthetic_student_t"),
+        "synthetic_mean_reverting": partial(load_synthetic_market, "synthetic_mean_reverting"),
+        "synthetic_whipsaw": partial(load_synthetic_market, "synthetic_whipsaw"),
     }
     try:
         loader = loaders[dataset_name]
