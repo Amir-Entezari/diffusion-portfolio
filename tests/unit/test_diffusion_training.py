@@ -325,11 +325,11 @@ def test_fit_resumes_from_last_checkpoint(
     ]
     
 
-def test_fit_reports_flushed_epoch_and_batch_progress(monkeypatch, capsys):
+def test_fit_reports_one_flushed_summary_per_completed_epoch(monkeypatch, capsys):
     printer = Mock(wraps=print)
     monkeypatch.setattr("builtins.print", printer)
     monkeypatch.setattr(diffusion_training, "time", SimpleNamespace(
-        perf_counter=Mock(side_effect=[100.0, 198.2]),
+        perf_counter=Mock(side_effect=[100.0, 198.2, 200.0, 292.7]),
     ))
     model = make_model()
     loss_calls = Mock(wraps=model.training_loss)
@@ -337,21 +337,16 @@ def test_fit_reports_flushed_epoch_and_batch_progress(monkeypatch, capsys):
     result = fit_diffusion(
         model, make_loader(n_samples=45, batch_size=2),
         make_loader(n_samples=25, batch_size=2),
-        epochs=50, stop_after_epoch=1, learning_rate=1e-3, weight_decay=0.0,
+        epochs=50, stop_after_epoch=2, learning_rate=1e-3, weight_decay=0.0,
         gradient_clip_norm=1.0, validation_seed=123, device="cpu", verbose=True,
     )
-    record = result.history[0]
     assert capsys.readouterr().out.splitlines() == [
-        "Epoch 001/050 | Starting...",
-        "Epoch 001/050 | Train 10/23 batches",
-        "Epoch 001/050 | Train 20/23 batches",
-        "Epoch 001/050 | Train 23/23 batches",
-        "Epoch 001/050 | Validation 10/13 batches",
-        "Epoch 001/050 | Validation 13/13 batches",
-        f"Epoch 001/050 | train={record.train_loss:.6f} | val={record.val_loss:.6f} | elapsed=98.2s",
+        f"Epoch {record.epoch:03d}/050 | train={record.train_loss:.6f} | val={record.val_loss:.6f} | elapsed={elapsed}s"
+        for record, elapsed in zip(result.history, ("98.2", "92.7"), strict=True)
     ]
+    assert printer.call_count == len(result.history)
     assert all(call.kwargs.get("flush") is True for call in printer.call_args_list)
-    assert loss_calls.call_count == 23 + 13
+    assert loss_calls.call_count == 2 * (23 + 13)
 
 
 def test_progress_preserves_losses_checkpoints_and_resume(tmp_path, capsys):
@@ -379,14 +374,23 @@ def test_progress_preserves_losses_checkpoints_and_resume(tmp_path, capsys):
             assert len(pilot.history) == 2
             model = make_model()  # Resume must restore model, optimizer, and RNG state.
             capsys.readouterr()
+            unchanged = fit_diffusion(model, train_loader, val_loader, stop_after_epoch=2, **options)
+            assert unchanged.history == pilot.history
+            assert capsys.readouterr().out == ""  # No epochs completed at this boundary.
         result = fit_diffusion(model, train_loader, val_loader, stop_after_epoch=3, **options)
         output = capsys.readouterr().out
         if not verbose:
             assert output == ""
-        if resume:
-            assert "Resuming from epoch 2" in output
-            assert "Epoch 003/005 | Starting..." in output
-            assert "Epoch 001/005" not in output and "Epoch 004/005" not in output
+        else:
+            completed = result.history[2:] if resume else result.history
+            lines = output.splitlines()
+            assert len(lines) == len(completed)
+            for line, record in zip(lines, completed, strict=True):
+                assert line.startswith(
+                    f"Epoch {record.epoch:03d}/005 | train={record.train_loss:.6f} | "
+                    f"val={record.val_loss:.6f} | elapsed="
+                )
+                assert line.endswith("s")
         assert [record.epoch for record in result.history] == [1, 2, 3]
         results.append((result.history, result.best_epoch, result.best_val_loss))
         checkpoints.append({name: torch.load(folder / name, weights_only=False, map_location="cpu")
