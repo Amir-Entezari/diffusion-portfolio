@@ -1,10 +1,11 @@
 """Frozen-CDE topology and covariance feature caches for current ablations."""
 from pathlib import Path
+import hashlib
 import json
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 
 from diffusion_portfolio.config import load_config
 from diffusion_portfolio.data import collate_return_batch
@@ -14,6 +15,7 @@ from diffusion_portfolio.models.diffusion.build import build_diffusion
 from diffusion_portfolio.models.topology import trajectory_geometry_features, trajectory_persistence_features
 from diffusion_portfolio.models.spd import covariance_features, log_euclidean_spd_features, regularized_covariance
 from diffusion_portfolio.utils.device import resolve_device
+from diffusion_portfolio.utils.research_checks import source_identity
 
 
 @torch.no_grad()
@@ -301,15 +303,26 @@ def spectral_summary(
     }
 
 
+def prepared_data_identity(datasets):
+    """Bind a feature cache to exact retained train/validation returns and dates."""
+    result = {}
+    for name, dataset in (("train", datasets.train), ("validation", datasets.val)):
+        digest = hashlib.sha256()
+        windows = dataset.raw_windows
+        for values in (windows.target_dates.values, windows.history, windows.target):
+            digest.update(memoryview(np.ascontiguousarray(values).view(np.uint8)))
+        result[name] = digest.hexdigest()
+    return result
+
+
 def precompute_features(kind, cde_run_dir, output_dir, *, batch_size=None,
-                        device="auto", eigenvalue_floor=1e-6):
+                        device="auto", eigenvalue_floor=1e-6, smoke=False, reuse=False):
     if kind not in ("topology", "spd"):
         raise ValueError("Unknown feature kind")
     batch_size = (32 if kind == "topology" else 128) if batch_size is None else batch_size
     if batch_size <= 0 or eigenvalue_floor <= 0:
         raise ValueError("Batch size and eigenvalue floor must be positive")
     cde_run_dir, output_dir = Path(cde_run_dir), Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
     cfg = load_config(cde_run_dir / "config.yaml")
     device = resolve_device(device)
     checkpoint = torch.load(cde_run_dir / "best.pt", map_location="cpu", weights_only=False)
@@ -341,6 +354,54 @@ def precompute_features(kind, cde_run_dir, output_dir, *, batch_size=None,
             "phase0_checkpoint_val_loss": float(checkpoint["val_loss"]),
             "relative_eigenvalue_floor": float(eigenvalue_floor),
         }
+    metadata["source"] = source_identity(cde_run_dir)
+    metadata["kind"] = kind
+    metadata["prepared_data"] = prepared_data_identity(datasets)
+    if reuse and not smoke and output_dir.exists():
+        for filename in ("train.npz", "validation.npz", "metadata.json"):
+            if not (output_dir / filename).is_file():
+                raise RuntimeError(f"Incomplete feature cache; choose a fresh output directory: {output_dir}")
+        saved = json.loads((output_dir / "metadata.json").read_text())
+        if (saved.get("source") != metadata["source"] or saved.get("kind") != kind
+                or saved.get("prepared_data") != metadata["prepared_data"]
+                or (kind == "spd" and saved.get("relative_eigenvalue_floor") != eigenvalue_floor)):
+            raise RuntimeError("Feature cache belongs to another source/settings; it will not be overwritten")
+        validate_feature_cache(output_dir, datasets, kind)
+        print("Reusing feature cache:", output_dir)
+        return saved
+    if smoke:
+        refitted, refit_scaler = prepare_return_data(cfg)
+        if (refit_scaler.columns != scaler.columns
+                or not np.array_equal(refit_scaler.mean, scaler.mean)
+                or not np.array_equal(refit_scaler.std, scaler.std)):
+            raise RuntimeError("Current source data no longer matches the saved training scaler")
+        del refitted
+        small = Subset(datasets.train, range(min(2, len(datasets.train))))
+        values = extract(encoder, small, **kwargs)
+        if not all(np.isfinite(value).all() for key, value in values.items() if key != "dates"):
+            raise RuntimeError("Non-finite feasibility features")
+        assets = len(scaler.columns)
+        dimension = assets * (assets + 1) // 2 if kind == "spd" else 7 + 16
+        if kind == "spd":
+            if (values["covariance_raw"].shape[1] != dimension
+                    or values["log_spd_raw"].shape[1] != dimension
+                    or np.any(values["min_eigenvalue"] <= 0)):
+                raise RuntimeError("SPD feasibility failed: dimension or positive-definiteness")
+        # Raw and scaled extras plus conditions; peak extraction/training RAM is higher.
+        extras = (4 if kind == "spd" else 2) * dimension
+        cache_bytes = (len(datasets.train) + len(datasets.val)) * (extras + cfg.model.condition_dim) * 4
+        report = {"assets": assets, "lookback": cfg.data.lookback,
+                  "shapes": {key: list(value.shape) for key, value in values.items()},
+                  "estimated_cache_GiB": cache_bytes / 1024**3,
+                  "train_samples": len(datasets.train), "validation_samples": len(datasets.val)}
+        if kind == "spd":
+            report["spectrum"] = spectral_summary(values)
+        if device.type == "cuda":
+            report["gpu_free_GiB"] = torch.cuda.mem_get_info(device)[0] / 1024**3
+            report["gpu_peak_allocated_GiB"] = torch.cuda.max_memory_allocated(device) / 1024**3
+        print(json.dumps(report, indent=2))
+        print("Feasibility only: two training windows; no full cache written. Peak RAM exceeds the cache estimate.")
+        return report
     train = extract(encoder, datasets.train, **kwargs)
     validation = extract(encoder, datasets.val, **kwargs)
     metadata["cde_condition_dim"] = int(train["cde_condition"].shape[1])
@@ -371,8 +432,40 @@ def precompute_features(kind, cde_run_dir, output_dir, *, batch_size=None,
             train_spectrum=spectral_summary(train),
             validation_spectrum=spectral_summary(validation),
         )
+    output_dir.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(output_dir / "train.npz", **train_cache)
     np.savez_compressed(output_dir / "validation.npz", **val_cache)
     (output_dir / "metadata.json").write_text(json.dumps(metadata, indent=2))
     print("Feature cache:", output_dir, "Dimensions:", [metadata[f"{n}_dim"] for n in names])
+    return metadata
+
+
+def validate_feature_cache(feature_dir, datasets, kind):
+    """Check cached dates, finite values and the recorded train-only transform."""
+    names = ("geometry", "tda") if kind == "topology" else ("covariance", "log_spd")
+    metadata = json.loads((Path(feature_dir) / "metadata.json").read_text())
+    if metadata.get("prepared_data") != prepared_data_identity(datasets):
+        raise RuntimeError("Feature cache dates/returns differ from current data preparation")
+    with np.load(Path(feature_dir) / "train.npz") as train, np.load(Path(feature_dir) / "validation.npz") as val:
+        for cache, dataset in ((train, datasets.train), (val, datasets.val)):
+            if not np.array_equal(cache["dates"], dataset.model_windows.target_dates.values):
+                raise RuntimeError("Feature cache dates do not match the canonical windows")
+            count = len(dataset)
+            if cache["cde_condition"].shape != (count, metadata["cde_condition_dim"]):
+                raise RuntimeError("Cached CDE conditioning dimensions differ")
+            for name in names:
+                if cache[name].shape != (count, metadata[name + "_dim"]):
+                    raise RuntimeError(f"Cached {name} dimensions differ")
+            for key in ("cde_condition", *names, *[name + "_raw" for name in names]):
+                if not np.isfinite(cache[key]).all():
+                    raise RuntimeError(f"Non-finite cached feature: {key}")
+        for name in names:
+            train_scaled, val_scaled, mean, std, _ = standardize_features(
+                train[name + "_raw"], val[name + "_raw"], drop_constant=kind == "topology"
+            )
+            if (not np.allclose(mean, metadata[name + "_mean"])
+                    or not np.allclose(std, metadata[name + "_std"])
+                    or not np.allclose(train_scaled, train[name])
+                    or not np.allclose(val_scaled, val[name])):
+                raise RuntimeError(f"Cache does not use the recorded train-only {name} transform")
     return metadata

@@ -11,6 +11,10 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from diffusion_portfolio.config import load_config
+from diffusion_portfolio.data.preparation import load_standardizer
+from diffusion_portfolio.utils.research_checks import check_checkpoint_pair, require_completed_run
+
 
 METRICS = (
     "validation_loss",
@@ -171,6 +175,14 @@ def ensure_run(
         seed=seed,
     )
 
+    if (run_dir / "config.yaml").exists():
+        if load_config(run_dir / "config.yaml") != load_config(seed_config):
+            raise RuntimeError(f"Existing run belongs to another configuration: {run_dir}")
+        if summary_path.exists():
+            require_completed_run(run_dir, seed_config, validation=metrics_path.exists())
+    if not summary_path.exists():
+        check_checkpoint_pair(run_dir)
+
     if not summary_path.exists():
         print()
         print(
@@ -187,6 +199,7 @@ def ensure_run(
         run_command(
             [
                 sys.executable,
+                "-u",
                 "scripts/train_diffusion.py",
                 "--config",
                 str(seed_config),
@@ -215,11 +228,13 @@ def ensure_run(
         run_command(
             [
                 sys.executable,
+                "-u",
                 "scripts/evaluate_diffusion.py",
                 "--run-dir",
                 str(run_dir),
                 "--device",
                 device,
+                "--split", "validation",
             ],
             cwd=repo_root,
         )
@@ -229,6 +244,8 @@ def ensure_run(
             f"Validation evaluation already complete: "
             f"{architecture} seed {seed}"
         )
+    if (run_dir / "config.yaml").exists():
+        require_completed_run(run_dir, seed_config, validation=True)
 
 
 def aggregate(
@@ -453,6 +470,30 @@ def run_multiseed(args, *, repo_root) -> None:
         args.seed42_cde_dir
     ).resolve()
 
+    vanilla_base = repo_root / (getattr(args, "vanilla_config", None) or "configs/mvp.yaml")
+    cde_base = repo_root / (getattr(args, "cde_config", None) or "configs/cde.yaml")
+    explicit_configs = getattr(args, "vanilla_config", None) or getattr(args, "cde_config", None)
+    if not explicit_configs:
+        for reference in (vanilla42, cde42):
+            config = reference / "config.yaml"
+            if config.is_file() and load_config(config).data.dataset != "ken_french_12":
+                raise ValueError("Non-KF12 references require --vanilla-config and --cde-config; KF12 defaults are unsafe")
+    if explicit_configs:
+        vanilla_cfg = require_completed_run(vanilla42, vanilla_base, validation=True)
+        cde_cfg = require_completed_run(cde42, cde_base, validation=True)
+        vanilla_scaler = load_standardizer(vanilla42 / "standardizer.npz")
+        cde_scaler = load_standardizer(cde42 / "standardizer.npz")
+        if (vanilla_scaler.columns != cde_scaler.columns
+                or not np.array_equal(vanilla_scaler.mean, cde_scaler.mean)
+                or not np.array_equal(vanilla_scaler.std, cde_scaler.std)):
+            raise ValueError("Seed-42 references do not have matched training scalers")
+        if (vanilla_cfg.data != cde_cfg.data or vanilla_cfg.seed != 42 or cde_cfg.seed != 42
+                or vanilla_cfg.training != cde_cfg.training or vanilla_cfg.evaluation != cde_cfg.evaluation
+                or vanilla_cfg.model.history_encoder != "mlp" or cde_cfg.model.history_encoder != "cde"):
+            raise ValueError("Multi-seed references must be matched Vanilla/CDE seed-42 experiments")
+    if 42 in args.seeds or len(set(args.seeds)) != len(args.seeds):
+        raise ValueError("Additional seeds must be unique and exclude the existing seed 42")
+
     print(
         "=" * 72
     )
@@ -492,12 +533,6 @@ def run_multiseed(args, *, repo_root) -> None:
     ]
 
     for seed in args.seeds:
-        if seed == 42:
-            raise ValueError(
-                "Seed 42 is already supplied "
-                "through existing runs"
-            )
-
         vanilla_dir = (
             output_root
             / "vanilla"
@@ -512,10 +547,7 @@ def run_multiseed(args, *, repo_root) -> None:
 
         ensure_run(
             repo_root=repo_root,
-            base_config=(
-                repo_root
-                / "configs/mvp.yaml"
-            ),
+            base_config=vanilla_base,
             run_dir=vanilla_dir,
             seed=seed,
             device=args.device,
@@ -533,10 +565,7 @@ def run_multiseed(args, *, repo_root) -> None:
 
         ensure_run(
             repo_root=repo_root,
-            base_config=(
-                repo_root
-                / "configs/cde.yaml"
-            ),
+            base_config=cde_base,
             run_dir=cde_dir,
             seed=seed,
             device=args.device,
@@ -551,6 +580,16 @@ def run_multiseed(args, *, repo_root) -> None:
                 seed=seed,
             )
         )
+
+        if explicit_configs:
+            for run_dir in (vanilla_dir, cde_dir):
+                require_completed_run(run_dir, validation=True)
+                reference_scaler = load_standardizer(vanilla42 / "standardizer.npz")
+                scaler = load_standardizer(run_dir / "standardizer.npz")
+                if (scaler.columns != reference_scaler.columns
+                        or not np.array_equal(scaler.mean, reference_scaler.mean)
+                        or not np.array_equal(scaler.std, reference_scaler.std)):
+                    raise RuntimeError("Paired seeds do not use the same training normalization/source data")
 
     (
         per_seed,

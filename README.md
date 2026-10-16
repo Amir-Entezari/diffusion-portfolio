@@ -132,24 +132,84 @@ FF49/FF100 with Vanilla MLP and Neural CDE conditioning. The Vanilla configs are
 and evaluation settings match `mvp.yaml`, and their data settings match the paired
 CDE configs. Existing KF12 notebooks and configs are unchanged.
 
-Enable Kaggle Internet; enable a GPU before training. Start with the default
-`MODE="smoke"`, then explicitly select `pilot` (two epochs) and `full` (50 epochs).
-Before this feature merges, set `BRANCH="feature/high-dimensional-kaggle"`;
-afterwards the default `main` applies. Run outputs live outside the checkout at
-`/kaggle/working/high_dimensional/{ff49,ff100}/{vanilla,neural_cde}/seed42/`, with
-separate `smoke/`, `pilot/` and `full/` directories. Partial full-run chunks can be
-selected using an absolute `FULL_STOP_AFTER_EPOCH`; resume uses `last.pt`, and
-validation evaluation requires verified completion and the saved best checkpoint.
-The smoke CLI's optional `--report-json` records its checks for these notebooks.
+Enable Kaggle Internet and a GPU. The notebooks use ordinary interactive cells:
+run setup/tests/restore, inspect a two-epoch pilot, then manually resume to epoch
+50 in the **same run directory**. `BRANCH="feature/high-dimensional-kaggle"` is
+used until merging; change that one variable to `main` afterwards. Seed-42 runs
+remain at `/kaggle/working/ff49_vanilla`, `ff49_cde_clean`, `ff100_vanilla`, and
+`ff100_cde`. The old damaged `ff49_cde` artifact is never used or repaired.
+Training prints one flushed loss/timing line per completed epoch. Plots prefer
+`last.pt` history over a potentially stale CSV. Commands check their exit status.
 
-Source ZIP snapshots/hashes, exact config/Git provenance, logs, timing/resources
-and saved metrics accompany the run. Pin the recorded `REVISION` when resuming
-after `main` advances. Uploads default off: opt in with `UPLOAD_ARTIFACTS=True`
-and choose `UPLOAD_STAGE`. Backups refresh the central Kaggle dataset first and
-replace only that stage under the equivalent `high_dimensional/...` namespace,
-preserving unrelated artifacts. FF100 outputs remain exploratory/scalability
-evidence given its 68 validation windows; no new forecasting result is asserted.
-Upload one notebook at a time to avoid concurrent central-dataset version races.
+The following matrix maps the retained KF12 methods to high-dimensional runs.
+**Ready** means implementation/CLI/fixture checks passed, not that an experiment
+has run or produced a positive finding. New downstream notebooks fail early
+until their prerequisite seed-42 models finish. All comparisons are validation
+only; FF100 remains exploratory because of its 68 validation windows.
+
+| Dataset | Experiment / notebook | Prerequisites | Expected artifacts | Validation status | Implementation |
+|---|---|---|---|---|---|
+| FF49 | [Vanilla](notebooks/high_dimensional/ff49_vanilla.ipynb), [CDE](notebooks/high_dimensional/ff49_neural_cde.ipynb) | None | config/scaler, best/last, history, summary, validation metrics/scenarios | Data/model smoke and notebook tests | Existing; smoke now, training manual |
+| FF100 | [Vanilla](notebooks/high_dimensional/ff100_vanilla.ipynb), [CDE](notebooks/high_dimensional/ff100_neural_cde.ipynb) | None | Same, isolated FF100 runs | Data/model smoke and notebook tests | Existing; exploratory |
+| FF49 | [Multi-seed](notebooks/high_dimensional/ff49_multiseed.ipynb) | Completed Vanilla + CDE seed 42 **and validation metrics** | Resumable seeds 43/44; per-seed and paired mean/std tables | Offline CLI, source/isolation and aggregation tests | Ready after prerequisites |
+| FF100 | [Multi-seed](notebooks/high_dimensional/ff100_multiseed.ipynb) | Same, FF100 references | Same under FF100 namespace | Same; no forecasting results asserted | Ready; exploratory |
+| FF49 | [Evidential/routing](notebooks/high_dimensional/ff49_evidential_router.ipynb) | Completed CDE + validation metrics; router needs current-regime probe | Next-day/current heads, thresholds, predictions; softmax/evidential router comparisons | Dimension, train-threshold, source and CLI checks | Ready after prerequisites; single-shot steps |
+| FF100 | [Evidential/routing](notebooks/high_dimensional/ff100_evidential_router.ipynb) | Same, FF100 references | Same under FF100 namespace | Same; small validation sample caveat | Ready; exploratory |
+| FF49 | [TDA](notebooks/high_dimensional/ff49_tda.ipynb) | Completed frozen CDE | Validated feature cache; CDE/geometry/TDA best checkpoints and metrics | Tiny feature/normalization/date/gradient and notebook checks | Ready after prerequisite + feasibility gate |
+| FF100 | [TDA](notebooks/high_dimensional/ff100_tda.ipynb) | Completed frozen CDE | Same under FF100 namespace | Same; no full extraction executed | Ready; exploratory |
+| FF49 | [SPD](notebooks/high_dimensional/ff49_spd.ipynb) | Completed frozen CDE | Covariance/Log-SPD cache, CDE/covariance/Log-SPD checkpoints and metrics | 1,225-dimensional fixture checks + feasibility gate | Ready after prerequisite + feasibility gate |
+| FF100 | [SPD](notebooks/high_dimensional/ff100_spd.ipynb) | Completed frozen CDE | Same; 5,050-dimensional covariance features | Rank-deficient covariance fixture checks; real GPU feasibility pending | Ready; exploratory, feasibility required |
+| FF49 | Diffolio (no runnable notebook claimed) | Approved source/warmup/continuity protocol; Goyal workbook | None created | Existing KF12 implementation inspected | **Blocked** |
+| FF100 | Diffolio (no runnable notebook claimed) | Same, plus policy for rolling characteristics across long gaps | None created | Existing KF12 implementation inspected | **Blocked** |
+
+New notebooks use `/kaggle/working/ff{49,100}_{multiseed,evidential_router,tda,spd}`
+and matching `high_dimensional/<directory-name>` namespaces. They restore only
+the needed references and their own outputs. Manual backup first downloads the
+latest complete central dataset, preserves unrelated experiments, and refuses
+failed/empty downloads. **Serialize uploads across sessions**: there is no
+cross-session lock, so simultaneous manual uploads can replace each other's
+new versions. Nothing uploads automatically during setup or smoke checks.
+Keep the cached official source ZIPs alongside saved artifacts; French can
+revise historical observations. Source fingerprints bind caches and new probes
+and routers to the exact saved CDE config, scaler and best checkpoint.
+
+Multi-seed adds `--vanilla-config` and `--cde-config` to `run_multiseed.py`;
+omitting them keeps the KF12 defaults. Seed 42 is never retrained. Additional
+runs preserve their saved state and skip completed validation. Feature
+extraction adds `--smoke` (two training histories, finite/dimension/spectral and
+cache-memory report) and `--reuse` (verify source identity, exact prepared returns/dates and train-only
+normalization before reusing caches). Neither flag changes default KF12 feature
+mathematics. TDA/SPD ablations use the existing resumable shared trainer and
+retain the original full feature dimensions and relative eigenvalue floor.
+The covariance rank bound is 59 at lookback 60: the FF100 feasibility check must
+pass without silently changing dtype, regularization or dimensionality. Cache
+estimates exclude substantial additional return-window, concatenation and GPU
+memory. No full extraction or GPU feasibility result is claimed here.
+
+Probe and router CLIs remain **single-shot**; their notebook cells refuse to
+overwrite existing directories and do not invent resume/pilot arguments.
+Completed substeps can be restored and inspected without rerunning training.
+The probes preserve the historical train-only scaler refit; the notebook checks
+it against the saved CDE scaler first. Routing uses only the current-regime
+heads, train-median vacuity and the retained interleaved validation corruption
+stream. That control loss is reported separately from a CDE checkpoint trained
+with separate validation timestep/noise streams. ECE/NLL/Brier classification
+diagnostics are distinct from forecast CRPS/Energy Score/ACE.
+
+**Diffolio blockers:** the model/ten characteristic channels/eight systematic
+covariates are largely parameterized, but `prepare_diffolio_data` does not pass
+French missing-row source options and its 63-observation windows do not use the
+shared continuity guard. Characteristics require 756 observations before the
+first requested date; FF49 starts too late for the unchanged 1958 request.
+The rolling momentum/beta/idiosyncratic-volatility calculations also currently
+count retained rows across FF100's multi-year gaps. A segment-aware 756-observation
+warmup after the July 2004 restart would leave no validation window before
+2004-12-31 under the current boundaries. A segment/warmup policy and
+its effect on sample availability must be explicitly selected and validated;
+changing dates or filling returns here would silently change the reproduction.
+The original batch-1024/100k-step architecture's memory requirements at 100
+assets are also unverified. No Diffolio config or misleading runnable notebook
+is fabricated, and the KF12 reproduction is unchanged.
 
 Add another source by returning a canonical panel from `data/sources/`, adding it
 to the small `data/registry.py` dispatch, and selecting its dataset/options and RF

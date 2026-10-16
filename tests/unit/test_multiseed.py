@@ -36,7 +36,7 @@ def test_multiseed_uses_supplied_repository_and_caller_paths(tmp_path, monkeypat
     def run_command(command, *, cwd):
         assert cwd == repo.resolve()
         calls.append(command)
-        if command[1] == "scripts/train_diffusion.py":
+        if "scripts/train_diffusion.py" in command:
             config_path = Path(command[command.index("--config") + 1])
             assert config_path.is_absolute()
             assert yaml.safe_load(config_path.read_text())["seed"] == 43
@@ -46,7 +46,8 @@ def test_multiseed_uses_supplied_repository_and_caller_paths(tmp_path, monkeypat
             # Force the independent validation command to execute too.
             (output / "validation_probabilistic_metrics.json").unlink()
         else:
-            assert command[1] == "scripts/evaluate_diffusion.py"
+            assert "scripts/evaluate_diffusion.py" in command
+            assert command[command.index("--split") + 1] == "validation"
             output = Path(command[command.index("--run-dir") + 1])
             assert output.is_absolute()
             write_result(output)

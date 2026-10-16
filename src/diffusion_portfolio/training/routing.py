@@ -598,6 +598,18 @@ def run_router(args):
     config_path = Path(args.config)
     output_dir = Path(args.output_dir)
 
+    # Reject a missing/wrong probe before any expensive frozen-CDE extraction.
+    from diffusion_portfolio.utils.research_checks import source_identity
+    for name in ("evidential_best.pt", "softmax_best.pt", "regime_thresholds.json", "validation_metrics.json"):
+        if not (probe_run_dir / name).is_file():
+            raise FileNotFoundError(f"Complete the current-regime probe first: {probe_run_dir / name}")
+    probe_metrics = json.loads((probe_run_dir / "validation_metrics.json").read_text())
+    thresholds = json.loads((probe_run_dir / "regime_thresholds.json").read_text())
+    if thresholds.get("regime_target") != "current":
+        raise ValueError("Routing requires the current-regime probe, not the next-day probe")
+    if "source" in probe_metrics and probe_metrics["source"] != source_identity(cde_run_dir):
+        raise ValueError("Probe artifacts belong to another CDE checkpoint/configuration/scaler")
+
     output_dir.mkdir(
         parents=True,
         exist_ok=True,
@@ -1239,6 +1251,7 @@ def run_router(args):
         )
 
     comparison = {
+        "source": source_identity(cde_run_dir),
         "CDE": {
             "validation_loss":
                 baseline_val,
@@ -1329,7 +1342,7 @@ def run_router(args):
             ]
             for name, values
             in comparison.items()
-            if isinstance(values, dict)
+            if isinstance(values, dict) and "validation_loss" in values
         },
         index=[
             "Validation loss ↓",

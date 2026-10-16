@@ -1,6 +1,7 @@
 """Explicit Gaussian/Lévy training and frozen-feature ablation runs."""
 from pathlib import Path
 import json
+import hashlib
 import shutil
 import subprocess
 
@@ -18,6 +19,7 @@ from diffusion_portfolio.models.diffusion.build import build_diffusion
 from diffusion_portfolio.training.diffusion import fit_diffusion
 from diffusion_portfolio.utils.device import resolve_device
 from diffusion_portfolio.utils.seed import set_global_seed
+from diffusion_portfolio.utils.research_checks import source_identity
 
 
 def fit_and_record(model, train_loader, val_loader, cfg, output_dir, *, device,
@@ -147,9 +149,22 @@ def train_feature_ablation(variant, cde_run_dir, feature_dir, output_dir, *,
         Path, (cde_run_dir, feature_dir, output_dir)
     )
     output_dir.mkdir(parents=True, exist_ok=True)
+    metadata_path = feature_dir / "metadata.json"
+    identity = {"variant": variant, "source": source_identity(cde_run_dir),
+                "feature_metadata_sha256": hashlib.sha256(metadata_path.read_bytes()).hexdigest()
+                if metadata_path.is_file() else None}
+    identity_path = output_dir / "experiment.json"
+    if identity_path.exists() and json.loads(identity_path.read_text()) != identity:
+        raise RuntimeError("Feature run belongs to another source, feature cache or variant")
     if resume and (output_dir / "summary.json").exists():
+        saved = json.loads((output_dir / "summary.json").read_text())
+        if "source" in saved and (saved["source"] != source_identity(cde_run_dir)
+                                  or saved["variant"] != variant):
+            raise RuntimeError("Existing feature run belongs to another frozen source/variant")
         print("Training already complete:", output_dir)
         return
+    if not identity_path.exists():
+        identity_path.write_text(json.dumps(identity, indent=2))
     cfg = load_config(cde_run_dir / "config.yaml")
     device = resolve_device(device)
     set_global_seed(cfg.seed, deterministic=False)
@@ -186,6 +201,7 @@ def train_feature_ablation(variant, cde_run_dir, feature_dir, output_dir, *,
     )
     summary = {
         "variant": variant, "seed": int(cfg.seed), "extra_dim": extra_dim,
+        "source": identity["source"],
         "parameter_count": sum(p.numel() for p in model.parameters()),
         "train_samples": len(train_dataset), "val_samples": len(val_dataset),
         "best_epoch": result.best_epoch, "best_val_loss": result.best_val_loss,

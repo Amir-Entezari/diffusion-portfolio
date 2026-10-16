@@ -11,6 +11,8 @@ def parse_args():
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--eigenvalue-floor", type=float, default=1e-6)
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
+    parser.add_argument("--smoke", action="store_true", help="Check two training windows and estimate cache RAM only.")
+    parser.add_argument("--reuse", action="store_true", help="Validate and reuse a complete matching feature cache.")
     return parser.parse_args()
 
 
@@ -19,4 +21,5 @@ if __name__ == "__main__":
     precompute_features(
         args.kind, args.cde_run_dir, args.output_dir, batch_size=args.batch_size,
         device=args.device, eigenvalue_floor=args.eigenvalue_floor,
+        smoke=args.smoke, reuse=args.reuse,
     )

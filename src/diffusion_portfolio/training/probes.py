@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -41,6 +42,7 @@ from diffusion_portfolio.evaluation.classification import classification_metrics
 
 from diffusion_portfolio.data.preparation import prepare_return_data
 from diffusion_portfolio.models.diffusion.build import build_diffusion
+from diffusion_portfolio.utils.research_checks import source_identity
 
 def load_probe_config(
     path: Path,
@@ -1192,6 +1194,8 @@ def run_probe(args) -> None:
         )
 
     metrics = {
+        "source": source_identity(cde_run_dir),
+        "dataset": cde_cfg.data.dataset,
         "phase0a_checkpoint_epoch": (
             checkpoint[
                 "epoch"
@@ -1209,6 +1213,7 @@ def run_probe(args) -> None:
             softmax_metrics
         ),
     }
+    shutil.copy2(probe_config_path, output_dir / "config.yaml")
 
     with (
         output_dir

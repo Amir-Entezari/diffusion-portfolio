@@ -18,13 +18,13 @@ from diffusion_portfolio.config import load_config
 nbformat = pytest.importorskip("nbformat")
 TransformerManager = pytest.importorskip("IPython.core.inputtransformer2").TransformerManager
 ROOT = Path(__file__).parents[2]
-NOTEBOOKS = sorted((ROOT / "notebooks/high_dimensional").glob("*.ipynb"))
 RUN_NAMES = {
     "ff49_vanilla": "ff49_vanilla",
     "ff49_neural_cde": "ff49_cde_clean",
     "ff100_vanilla": "ff100_vanilla",
     "ff100_neural_cde": "ff100_cde",
 }
+NOTEBOOKS = sorted(ROOT / "notebooks/high_dimensional" / f"{name}.ipynb" for name in RUN_NAMES)
 REQUIRED = ("config.yaml", "standardizer.npz", "best.pt", "last.pt")
 
 
