@@ -123,6 +123,27 @@ def test_training_provenance_recording_preserves_exact_history_weights_and_rng(t
     assert torch.equal(first["loader_rng_state"], second["loader_rng_state"])
 
 
+def test_training_contract_exists_before_the_first_training_step(tiny_run, tmp_path, monkeypatch):
+    from diffusion_portfolio.training import runs
+
+    class BeforeTraining(Exception):
+        pass
+
+    def inspect(model, train_loader, val_loader, cfg, output_dir, **kwargs):
+        recorded = json.loads((output_dir / "data_identity.json").read_text())["training_contract"]
+        assert recorded["seed"] == cfg.seed and recorded["optimizer"] == "torch.optim.AdamW"
+        assert recorded["training"] == asdict(cfg.training)
+        assert recorded["evaluation"] == asdict(cfg.evaluation)
+        assert recorded["model"] == json.loads(json.dumps(asdict(cfg.model)))
+        assert recorded["training"]["epochs"] == 50
+        assert not (output_dir / "best.pt").exists() and not (output_dir / "last.pt").exists()
+        raise BeforeTraining
+
+    monkeypatch.setattr(runs, "fit_and_record", inspect)
+    with pytest.raises(BeforeTraining):
+        runs.train_diffusion(tiny_run.config, tmp_path / "new", device="cpu", resume=True, stop_after_epoch=2)
+
+
 @pytest.mark.parametrize("limit", [0, -1, True, 1.5])
 def test_invalid_inference_limit(limit, tmp_path):
     with pytest.raises(ValueError, match="limit"):
@@ -136,6 +157,26 @@ def test_no_limited_test_or_implicit_overwrite(tiny_run, tmp_path):
         forecasts.evaluate_diffusion(tiny_run.run, limit=3)
     with pytest.raises(FileExistsError, match="empty"):
         forecasts.evaluate_diffusion(tiny_run.run, limit=3, output_dir=tiny_run.run)
+
+
+def test_inference_limit_exactly_available_is_accepted(tiny_run, tmp_path, monkeypatch):
+    generate = forecasts.generate_scenarios
+
+    def verify_count(model, loader, scaler, **kwargs):
+        assert len(loader.dataset) == kwargs["n_samples"] == 40
+        return generate(model, loader, scaler, **kwargs)
+
+    monkeypatch.setattr(forecasts, "generate_scenarios", verify_count)
+    result = forecasts.evaluate_diffusion(tiny_run.run, limit=40, output_dir=tmp_path / "exact", batch_size=8, device="cpu")
+    assert result["n_validation"] == result["available_samples"] == result["evaluation_limit"] == 40
+
+
+def test_excessive_inference_limit_fails_before_model_or_sampling(tiny_run, tmp_path, monkeypatch):
+    monkeypatch.setattr(forecasts, "build_diffusion", lambda *a, **kw: pytest.fail("Model built for an excessive limit"))
+    monkeypatch.setattr(forecasts, "generate_scenarios", lambda *a, **kw: pytest.fail("Sampling ran for an excessive limit"))
+    with pytest.raises(ValueError, match="limit=41 exceeds the 40 available validation dates"):
+        forecasts.evaluate_diffusion(tiny_run.run, limit=41, output_dir=tmp_path / "excessive", device="cpu")
+    assert not (tmp_path / "excessive").exists()
 
 
 @pytest.mark.parametrize("corruption,match", [("identity", "Missing training-time"), ("scaler", "train-only"),
@@ -166,7 +207,7 @@ def test_inference_rejects_unverifiable_or_inconsistent_run(tiny_run, tmp_path, 
     assert not (tmp_path / "out").exists()
 
 
-def test_completed_budget_distinguished_from_execution_pilot(tiny_run, tmp_path):
+def test_rewriting_original_budget_cannot_manufacture_completion(tiny_run, tmp_path):
     from diffusion_portfolio.data.preparation import load_standardizer
     from diffusion_portfolio.evaluation.forecast_identity import verify_synthetic_checkpoint
     run = tmp_path / "complete"
@@ -175,8 +216,100 @@ def test_completed_budget_distinguished_from_execution_pilot(tiny_run, tmp_path)
     (run / "config.yaml").write_text(yaml.safe_dump(asdict(cfg)))
     best = torch.load(run / "best.pt", weights_only=False)
     (run / "summary.json").write_text(json.dumps({"best_epoch": best["epoch"], "best_val_loss": best["val_loss"]}))
-    metadata = verify_synthetic_checkpoint(run, cfg, load_standardizer(run / "standardizer.npz"), best)
+    original_provenance = (run / "data_identity.json").read_bytes()
+    with pytest.raises(ValueError, match="Immutable training contract differs"):
+        verify_synthetic_checkpoint(run, cfg, load_standardizer(run / "standardizer.npz"), best)
+    assert (run / "data_identity.json").read_bytes() == original_provenance
+
+
+def test_two_epoch_pilot_resumes_to_its_original_fifty_epoch_budget(tiny_run, tmp_path, monkeypatch):
+    from diffusion_portfolio.training import runs
+    from diffusion_portfolio.data.preparation import load_standardizer
+    from diffusion_portfolio.evaluation.forecast_identity import verify_synthetic_checkpoint
+
+    run = tmp_path / "continued"
+    shutil.copytree(tiny_run.run, run)
+    original_contract = json.loads((run / "data_identity.json").read_text())["training_contract"]
+    assert original_contract["training"]["epochs"] == 50
+    assert torch.load(run / "last.pt", weights_only=False)["epoch"] == 2
+    monkeypatch.setattr(runs, "git_commit", lambda: None)  # Never execute Git.
+    # Tiny three-asset fixture only; no research-sized 50-epoch experiment.
+    result = runs.train_diffusion(tiny_run.config, run, device="cpu", resume=True)
+    assert [row.epoch for row in result.history] == list(range(1, 51))
+    assert json.loads((run / "data_identity.json").read_text())["training_contract"] == original_contract
+    assert load_config(run / "config.yaml") == tiny_run.cfg
+    best = torch.load(run / "best.pt", weights_only=False)
+    metadata = verify_synthetic_checkpoint(run, tiny_run.cfg, load_standardizer(run / "standardizer.npz"), best)
     assert metadata["training_run"]["status"] == "completed_declared_budget"
+    assert metadata["training_run"]["configured_epochs"] == metadata["training_run"]["completed_epochs"] == 50
+
+
+@pytest.mark.parametrize("section,key,value", [
+    (None, "seed", 43), ("model", "history_hidden_dim", 32), ("model", "history_encoder", "cde"),
+    ("training", "epochs", 2), ("training", "epochs", 51), ("training", "learning_rate", .001),
+    ("training", "weight_decay", .1), ("training", "batch_size", 16),
+    ("training", "gradient_clip_norm", .5), ("training", "validation_seed", 99),
+    ("evaluation", "n_scenarios", 16), ("data", "lookback", 5),
+])
+def test_incompatible_resume_preserves_all_original_artifacts(tiny_run, tmp_path, monkeypatch, section, key, value):
+    from diffusion_portfolio.training import runs
+    run = tmp_path / "run"
+    shutil.copytree(tiny_run.run, run)
+    cfg = (replace(tiny_run.cfg, **{key: value}) if section is None else
+           replace(tiny_run.cfg, **{section: replace(getattr(tiny_run.cfg, section), **{key: value})}))
+    path = tmp_path / "changed.yaml"
+    path.write_text(yaml.safe_dump(asdict(cfg)))
+    before = {p: file_sha256(p) for p in run.iterdir() if p.is_file()}
+    monkeypatch.setattr(runs, "prepare_return_data", lambda *a, **kw: pytest.fail("Incompatible resume reached data loading"))
+    with pytest.raises(ValueError, match="Immutable training contract differs"):
+        runs.train_diffusion(path, run, device="cpu", resume=True, stop_after_epoch=3)
+    assert all(file_sha256(p) == digest for p, digest in before.items())
+
+
+def test_completed_shortcut_cannot_bypass_contract_validation(tiny_run, tmp_path):
+    from diffusion_portfolio.training import runs
+    run = tmp_path / "run"
+    shutil.copytree(tiny_run.run, run)
+    (run / "summary.json").write_text("{}")
+    cfg = replace(tiny_run.cfg, training=replace(tiny_run.cfg.training, epochs=2))
+    path = tmp_path / "changed.yaml"
+    path.write_text(yaml.safe_dump(asdict(cfg)))
+    with pytest.raises(ValueError, match="Immutable training contract differs"):
+        runs.train_diffusion(path, run, device="cpu", resume=True)
+
+
+def test_legacy_resume_cannot_retroactively_certify_a_training_contract(tiny_run, tmp_path):
+    from diffusion_portfolio.training import runs
+    run = tmp_path / "legacy"
+    shutil.copytree(tiny_run.run, run)
+    identity = json.loads((run / "data_identity.json").read_text())
+    del identity["training_contract"]
+    (run / "data_identity.json").write_text(json.dumps(identity))
+    result = runs.train_diffusion(tiny_run.config, run, device="cpu", resume=True, stop_after_epoch=3)
+    assert result.history[-1].epoch == 3
+    continued = json.loads((run / "data_identity.json").read_text())
+    assert "training_contract" not in continued
+    assert continued["source_identity"] == identity["source_identity"]
+    before = {p: file_sha256(p) for p in run.iterdir() if p.is_file()}
+    with pytest.raises(ValueError, match="Missing immutable training contract"):
+        forecasts.evaluate_diffusion(run, limit=3, output_dir=tmp_path / "strict", device="cpu")
+    assert all(file_sha256(p) == digest for p, digest in before.items())
+    # Historical default evaluation remains available without certification.
+    result = forecasts.evaluate_diffusion(run, batch_size=8, device="cpu")
+    assert result["n_validation"] == 40
+    assert all(file_sha256(p) == digest for p, digest in before.items())
+
+
+def test_changed_contract_rejected_by_default_and_strict_evaluation(tiny_run, tmp_path):
+    run = tmp_path / "changed"
+    shutil.copytree(tiny_run.run, run)
+    cfg = replace(tiny_run.cfg, training=replace(tiny_run.cfg.training, learning_rate=.001))
+    (run / "config.yaml").write_text(yaml.safe_dump(asdict(cfg)))
+    before = {p: file_sha256(p) for p in run.iterdir() if p.is_file()}
+    for options in ({}, {"limit": 3, "output_dir": tmp_path / "strict"}):
+        with pytest.raises(ValueError, match="Immutable training contract differs"):
+            forecasts.evaluate_diffusion(run, device="cpu", **options)
+    assert all(file_sha256(p) == digest for p, digest in before.items())
 
 
 def test_per_date_scores_match_brute_force_and_historical_aggregates():
@@ -225,6 +358,7 @@ def test_full_baseline_subset_comparison_scores_signs_and_preservation(matched, 
     report = compare_synthetic_forecasts(matched.baseline, matched.diffusion, output_dir=output,
                                          limit=6, block_length=2, n_bootstrap=50, bootstrap_seed=17)
     assert report["n_dates"] == 6 and report["training_run"]["status"] == "preliminary"
+    assert report["training_contract"]["training"]["epochs"] == 50
     table = pd.read_csv(output / "per_date_scores.csv")
     for row in report["paired_comparisons"]:
         baseline, metric = row["baseline"], row["metric"]
@@ -236,6 +370,36 @@ def test_full_baseline_subset_comparison_scores_signs_and_preservation(matched, 
     assert len(pd.read_csv(output / "calibration.csv")) == 20
     assert all(file_sha256(path) == value for path, value in original_hashes.items())
     assert json.loads((output / "comparison_report.json").read_text()) == report
+
+
+@pytest.mark.parametrize("corruption,match", [("config", "Immutable training contract differs"),
+                                            ("metadata", "metadata differs from the immutable"),
+                                            ("missing", "Missing immutable training contract")])
+def test_comparison_verifies_immutable_training_contract(matched, tmp_path, corruption, match):
+    diffusion = tmp_path / "diffusion"
+    shutil.copytree(matched.diffusion, diffusion)
+    metadata_path = diffusion / "forecast_metadata.json"
+    metadata = json.loads(metadata_path.read_text())
+    if corruption == "config":
+        path = diffusion / "config.yaml"
+        cfg = yaml.safe_load(path.read_text())
+        cfg["training"]["epochs"] = 2
+        path.write_text(yaml.safe_dump(cfg))
+        metadata["checkpoint_files_sha256"]["config.yaml"] = file_sha256(path)
+        metadata["training_run"].update(configured_epochs=2, completed_epochs=2, status="completed_declared_budget")
+    elif corruption == "metadata":
+        metadata["training_contract"]["training"]["epochs"] = 2
+    else:
+        path = diffusion / "data_identity.json"
+        identity = json.loads(path.read_text())
+        del identity["training_contract"]
+        path.write_text(json.dumps(identity))
+    metadata_path.write_text(json.dumps(metadata))
+    before = {p: file_sha256(p) for p in diffusion.iterdir() if p.is_file()}
+    with pytest.raises(ValueError, match=match):
+        compare_synthetic_forecasts(matched.baseline, diffusion, output_dir=tmp_path / "out", block_length=2)
+    assert not (tmp_path / "out").exists()
+    assert all(file_sha256(p) == digest for p, digest in before.items())
 
 
 @pytest.mark.parametrize("corruption,match", [

@@ -434,12 +434,21 @@ advantage is presumed.
 first N validation windows, slicing before the DataLoader. Limited inference
 requires validation and a separate empty/absent destination. Omitting the new
 options preserves existing full evaluation, RNG conventions and output filenames.
+Limits larger than the available validation count are rejected, not silently capped.
 The configured scenario count (256 for the synthetic configs) is retained.
 
 New Gaussian/mean-reverting Vanilla training records observation-based
 `data_identity.json` beside existing checkpoints. It hashes the train/validation
-panel and simulator source and records data settings, dates and assets. This is
-metadata only: checkpoint schema, scaler, model, optimizer and training RNG are
+panel and simulator source and records data settings, dates and assets. Before
+training starts, the same sidecar freezes the training contract: seed,
+model, AdamW identity, all training settings (including the original epoch budget)
+and evaluation settings. Resume, evaluation and comparison reject changes to this
+contract. Runtime device/resume/stopping options are excluded, so stopping after
+two epochs can resume to the unchanged configured 50-epoch budget. Existing
+checkpoints lacking this contract are not automatically upgraded or certified;
+their historical resume and default evaluation remain available, while strict
+comparison requires the original recorded contract.
+These additions are metadata only: checkpoint schema, scaler, model, optimizer and training RNG are
 unchanged. After a completed training chunk, the sidecar also binds source
 identity to the exact best/last checkpoint hashes. A chunk interrupted before
 this record is written fails strict verification until safely resumed; the

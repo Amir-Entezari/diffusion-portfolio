@@ -1,6 +1,7 @@
 """Observation-based provenance for controlled synthetic forecast comparisons."""
 from dataclasses import asdict
 import hashlib
+import json
 from pathlib import Path
 
 import numpy as np
@@ -12,6 +13,28 @@ from diffusion_portfolio.data.registry import load_return_table
 
 COMPARISON_DATASETS = {"synthetic_gaussian", "synthetic_mean_reverting"}
 ARITHMETIC_UNITS = "arithmetic decimal asset returns"
+
+
+def synthetic_training_contract(cfg):
+    """Freeze the settings that define a Vanilla synthetic training experiment.
+
+    Runtime device/resume/stop-after-epoch options are intentionally excluded:
+    a two-epoch chunk must retain the original configured training budget.
+    """
+    return json.loads(json.dumps({
+        "seed": cfg.seed, "data": asdict(cfg.data), "model": asdict(cfg.model),
+        "optimizer": "torch.optim.AdamW", "training": asdict(cfg.training),
+        "evaluation": asdict(cfg.evaluation),
+    }))
+
+
+def require_training_contract(recorded, cfg):
+    contract = recorded.get("training_contract")
+    if contract is None:
+        raise ValueError("Missing immutable training contract; legacy provenance cannot be retrospectively certified")
+    if contract != synthetic_training_contract(cfg):
+        raise ValueError("Immutable training contract differs from the requested/saved configuration; use the original configuration or a new run directory")
+    return contract
 
 
 def file_sha256(path):

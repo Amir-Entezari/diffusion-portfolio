@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 
 from diffusion_portfolio.config import load_config
 from diffusion_portfolio.data import collate_return_batch, ReturnWindowDataset, WindowedReturns
-from diffusion_portfolio.data.identity import COMPARISON_DATASETS, file_sha256
+from diffusion_portfolio.data.identity import COMPARISON_DATASETS, file_sha256, require_training_contract
 from diffusion_portfolio.data.features import FeatureDataset, cached_features
 from diffusion_portfolio.data.preparation import prepare_return_data, load_standardizer
 from diffusion_portfolio.evaluation.probabilistic import evaluate_probabilistic_forecast, require_finite_arithmetic_moments
@@ -41,6 +41,11 @@ def evaluate_diffusion(run_dir, *, batch_size=32, device="auto", split="validati
         raise FileExistsError(f"Inference output directory must be empty or absent: {destination}")
     source_dir = Path(cde_run_dir) if variant is not None else run_dir
     cfg = load_config(source_dir / "config.yaml")
+    provenance_path = source_dir / "data_identity.json"
+    if provenance_path.is_file():
+        recorded = json.loads(provenance_path.read_text())
+        if "training_contract" in recorded:
+            require_training_contract(recorded, cfg)
     require_finite_arithmetic_moments(cfg.data.dataset)
     device = resolve_device(device)
     experiment_path = run_dir / "experiment.json"
@@ -62,6 +67,8 @@ def evaluate_diffusion(run_dir, *, batch_size=32, device="auto", split="validati
     dataset = datasets.val if split == "validation" else datasets.test
     available = len(dataset)
     if limit is not None:
+        if limit > available:
+            raise ValueError(f"limit={limit} exceeds the {available} available validation dates")
         def prefix(windows):
             return WindowedReturns(windows.history[:limit], windows.target[:limit], windows.target_dates[:limit])
         dataset = ReturnWindowDataset(prefix(dataset.model_windows), prefix(dataset.raw_windows))

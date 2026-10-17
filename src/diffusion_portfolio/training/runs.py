@@ -14,7 +14,10 @@ from diffusion_portfolio.config import load_config
 from diffusion_portfolio.data import make_dataloaders
 from diffusion_portfolio.data.features import FeatureDataset, cached_features
 from diffusion_portfolio.data.preparation import prepare_return_data, save_standardizer
-from diffusion_portfolio.data.identity import COMPARISON_DATASETS, file_sha256, synthetic_data_identity
+from diffusion_portfolio.data.identity import (
+    COMPARISON_DATASETS, file_sha256, synthetic_data_identity,
+    synthetic_training_contract, require_training_contract,
+)
 from diffusion_portfolio.models.diffusion import PrecomputedConditionDiffusion
 from diffusion_portfolio.models.diffusion.build import build_diffusion
 from diffusion_portfolio.training.diffusion import fit_diffusion
@@ -57,10 +60,19 @@ def train_diffusion(config_path, output_dir, *, device="auto", resume=False,
                     stop_after_epoch=None, alpha=None, reference_run_dir=None):
     config_path, output_dir = Path(config_path), Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    cfg = None
+    provenance_path = output_dir / "data_identity.json"
+    if provenance_path.is_file():
+        cfg = load_config(config_path)
+        recorded = json.loads(provenance_path.read_text())
+        if "training_contract" in recorded:
+            require_training_contract(recorded, cfg)
+            if alpha is not None:
+                raise ValueError("Immutable Vanilla training contract cannot be resumed as a Lévy process")
     if alpha is None and resume and (output_dir / "summary.json").exists():
         print("Training already complete:", output_dir)
         return
-    cfg = load_config(config_path)
+    cfg = cfg if cfg is not None else load_config(config_path)
     metadata = {}
     standardizer_path = None
     if alpha is not None:
@@ -98,10 +110,14 @@ def train_diffusion(config_path, output_dir, *, device="auto", resume=False,
         if identity_path.exists():
             recorded = json.loads(identity_path.read_text())
             recorded.pop("checkpoint_sha256", None)
+            if "training_contract" in recorded:
+                identity["training_contract"] = require_training_contract(recorded, cfg)
             if recorded != identity:
                 raise ValueError("Existing training source identity differs from the requested configuration/data")
+            identity = recorded  # Retain the original contract, never replace it during resume.
         elif not any((output_dir / name).exists() for name in ("best.pt", "last.pt")):
             # Never retrospectively certify a legacy checkpoint's source.
+            identity["training_contract"] = synthetic_training_contract(cfg)
             identity_path.write_text(json.dumps(identity, indent=2))
     loaders = make_dataloaders(
         datasets, batch_size=cfg.training.batch_size, seed=cfg.seed, num_workers=0

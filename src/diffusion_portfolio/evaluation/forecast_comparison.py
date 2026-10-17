@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from diffusion_portfolio.config import load_config
-from diffusion_portfolio.data.identity import ARITHMETIC_UNITS, file_sha256, synthetic_data_identity
+from diffusion_portfolio.data.identity import ARITHMETIC_UNITS, file_sha256, synthetic_data_identity, require_training_contract
 from diffusion_portfolio.data.preparation import load_standardizer, prepare_return_data
 from diffusion_portfolio.evaluation.probabilistic import (
     crps_by_date, energy_score_by_date, evaluate_probabilistic_forecast,
@@ -106,7 +106,7 @@ def compare_synthetic_forecasts(baseline_dir, diffusion_dir, *, output_dir, limi
                         "n_dates", "n_scenarios", "target_dates", "models", "training", "available_validation_dates"), "baseline")
     _require(diffusion, ("data_config", "source_identity", "columns", "split", "return_units", "model_kind",
                          "n_dates", "n_scenarios", "target_dates", "training", "training_run",
-                         "checkpoint_files_sha256", "archive_sha256", "subset"), "diffusion")
+                         "checkpoint_files_sha256", "archive_sha256", "subset", "training_contract"), "diffusion")
     if baseline["split"] != "validation" or diffusion["split"] != "validation":
         raise ValueError("Only validation archives may be compared; the test partition remains held out")
     if baseline["return_units"] != ARITHMETIC_UNITS or diffusion["return_units"] != ARITHMETIC_UNITS:
@@ -123,6 +123,10 @@ def compare_synthetic_forecasts(baseline_dir, diffusion_dir, *, output_dir, limi
     scaler = load_standardizer(diffusion_dir / "standardizer.npz")
     identity = synthetic_data_identity(cfg, scaler)
     recorded_identity = _read_json(diffusion_dir / "data_identity.json")
+    contract = require_training_contract(recorded_identity, cfg)
+    if diffusion["training_contract"] != contract:
+        raise ValueError("Diffusion metadata differs from the immutable training contract")
+    recorded_identity.pop("training_contract")
     recorded_checkpoints = recorded_identity.pop("checkpoint_sha256", {})
     if recorded_identity != identity:
         raise ValueError("Saved training source provenance differs from reconstructed data identity")
@@ -205,7 +209,7 @@ def compare_synthetic_forecasts(baseline_dir, diffusion_dir, *, output_dir, limi
         "numpy_version": np.__version__, "pandas_version": pd.__version__,
         "start": str(dates[0].date()), "end": str(dates[-1].date()), "return_units": ARITHMETIC_UNITS,
         "data_config": identity["data_config"], "source_identity": identity["source_identity"],
-        "training_run": training, "checkpoint_files_sha256": hashes, "input_sha256": inputs,
+        "training_contract": contract, "training_run": training, "checkpoint_files_sha256": hashes, "input_sha256": inputs,
         "models": metrics, "paired_comparisons": rows,
         "bootstrap": {"method": "overlapping non-circular moving blocks, percentile 95% CI", "block_length": block_length,
                       "replications": n_bootstrap, "seed": bootstrap_seed},

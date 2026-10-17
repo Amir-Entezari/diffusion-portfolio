@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from diffusion_portfolio.data.identity import file_sha256, synthetic_data_identity
+from diffusion_portfolio.data.identity import file_sha256, synthetic_data_identity, require_training_contract
 from diffusion_portfolio.utils.research_checks import check_checkpoint_pair
 
 
@@ -20,6 +20,8 @@ def verify_synthetic_checkpoint(run_dir, cfg, scaler, checkpoint):
         raise ValueError("Missing training-time data_identity.json; source provenance cannot be verified for this legacy run")
     identity = synthetic_data_identity(cfg, scaler)
     recorded = json.loads(path.read_text())
+    contract = require_training_contract(recorded, cfg)
+    recorded.pop("training_contract")
     checkpoint_hashes = recorded.pop("checkpoint_sha256", {})
     if recorded != identity:
         raise ValueError("Training source identity does not match the saved configuration/scaler and current source")
@@ -63,4 +65,4 @@ def verify_synthetic_checkpoint(run_dir, cfg, scaler, checkpoint):
     hashes = {name: file_sha256(run_dir / name) for name in
               ("config.yaml", "standardizer.npz", "best.pt", "data_identity.json", "last.pt", "summary.json", "history.csv")
               if (run_dir / name).is_file()}
-    return {**identity, "training_run": training, "checkpoint_files_sha256": hashes}
+    return {**identity, "training_contract": contract, "training_run": training, "checkpoint_files_sha256": hashes}
