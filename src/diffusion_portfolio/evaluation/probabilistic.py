@@ -124,7 +124,7 @@ def _validate_forecasts(
     )
 
 
-def marginal_crps(
+def marginal_crps_by_date(
     forecast_samples: np.ndarray,
     observed: np.ndarray,
 ) -> np.ndarray:
@@ -142,7 +142,7 @@ def marginal_crps(
     Returns
     -------
     np.ndarray
-        Mean CRPS over time for each asset, shape [assets].
+    CRPS for each date and asset, shape [time, assets].
     """
 
     (
@@ -196,15 +196,23 @@ def marginal_crps(
         - dispersion
     )
 
-    return crps.mean(
-        axis=0
-    )
+    return crps
 
 
-def energy_score(
+def marginal_crps(forecast_samples: np.ndarray, observed: np.ndarray) -> np.ndarray:
+    """Historical mean-over-time marginal CRPS, shape [assets]."""
+    return marginal_crps_by_date(forecast_samples, observed).mean(axis=0)
+
+
+def crps_by_date(forecast_samples: np.ndarray, observed: np.ndarray) -> np.ndarray:
+    """Per-date CRPS averaged over assets, using the existing ensemble estimator."""
+    return marginal_crps_by_date(forecast_samples, observed).mean(axis=1)
+
+
+def energy_score_by_date(
     forecast_samples: np.ndarray,
     observed: np.ndarray,
-) -> float:
+) -> np.ndarray:
     """Compute the multivariate Energy Score.
 
     For forecast vector X and observation y:
@@ -276,9 +284,12 @@ def energy_score(
             - pairwise_term
         )
 
-    return float(
-        scores.mean()
-    )
+    return scores
+
+
+def energy_score(forecast_samples: np.ndarray, observed: np.ndarray) -> float:
+    """Historical mean-over-time Energy Score, with unchanged normalization."""
+    return float(energy_score_by_date(forecast_samples, observed).mean())
 
 
 def prediction_interval_calibration(

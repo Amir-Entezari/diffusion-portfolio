@@ -10,6 +10,8 @@ def parse_args():
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     parser.add_argument("--split", choices=["validation", "test"], default="validation")
+    parser.add_argument("--limit", type=int, default=None, help="First N validation targets; requires --output-dir")
+    parser.add_argument("--output-dir", default=None, help="Isolated inference outputs (empty or absent)")
     parser.add_argument("--variant", choices=FEATURE_VARIANTS, default=None)
     parser.add_argument("--cde-run-dir", default=None)
     parser.add_argument("--feature-dir", default=None)
@@ -24,4 +26,5 @@ if __name__ == "__main__":
     evaluate_diffusion(
         args.run_dir, batch_size=args.batch_size, device=args.device, split=args.split,
         variant=args.variant, cde_run_dir=args.cde_run_dir, feature_dir=args.feature_dir,
+        limit=args.limit, output_dir=args.output_dir,
     )

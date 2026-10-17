@@ -418,8 +418,8 @@ Supported sources are Gaussian, mean-reverting, regime, regime-jump and whipsaw.
 population moments; its log-space diagnostics remain available. Config-aware
 diffusion/portfolio scoring also rejects this source. Array-only metric functions
 cannot infer source identity. No held-out test evaluation or diffusion training
-is included. Comparison with saved diffusion scenarios is deferred until exact
-source/configuration, target-date, asset-order and observation matches are verified.
+is included in the statistical runner. The paired Vanilla workflow below verifies
+source/configuration, target-date, asset-order and observation matches.
 
 The [CPU Kaggle demo](notebooks/synthetic/synthetic_forecast_benchmarks.ipynb)
 runs small Gaussian and AR pilots, displays saved metrics and a preselected example
@@ -427,6 +427,93 @@ distribution. Finite-ensemble scores have Monte Carlo error; small pilots do not
 establish significance. Multi-seed uncertainty analysis is deferred. These
 comparisons may favor correctly specified statistical models; no diffusion
 advantage is presumed.
+
+## Paired synthetic Vanilla comparisons
+
+`evaluate_diffusion.py --limit N --output-dir <new-directory>` samples only the
+first N validation windows, slicing before the DataLoader. Limited inference
+requires validation and a separate empty/absent destination. Omitting the new
+options preserves existing full evaluation, RNG conventions and output filenames.
+The configured scenario count (256 for the synthetic configs) is retained.
+
+New Gaussian/mean-reverting Vanilla training records observation-based
+`data_identity.json` beside existing checkpoints. It hashes the train/validation
+panel and simulator source and records data settings, dates and assets. This is
+metadata only: checkpoint schema, scaler, model, optimizer and training RNG are
+unchanged. After a completed training chunk, the sidecar also binds source
+identity to the exact best/last checkpoint hashes. A chunk interrupted before
+this record is written fails strict verification until safely resumed; the
+tool never certifies mismatched checkpoint bytes from filenames or losses alone.
+Legacy runs remain usable by the original evaluator; missing source
+evidence is never retrospectively manufactured. Strict comparisons reject such
+runs rather than certify an unverifiable training source.
+
+Execution pilot, using the original 50-epoch configuration with an absolute
+two-epoch stopping boundary:
+
+```bash
+python -u scripts/train_diffusion.py --config configs/synthetic_gaussian.yaml \
+  --output-dir outputs/synthetic_diffusion/gaussian_execution_pilot \
+  --device cuda --resume --stop-after-epoch 2
+
+python -u scripts/evaluate_diffusion.py \
+  --run-dir outputs/synthetic_diffusion/gaussian_execution_pilot \
+  --split validation --limit 64 --batch-size 16 --device cuda \
+  --output-dir outputs/synthetic_comparisons/gaussian_pilot_inference
+
+python scripts/compare_synthetic_forecasts.py \
+  --baseline-dir outputs/synthetic_benchmarks/gaussian_full \
+  --diffusion-dir outputs/synthetic_comparisons/gaussian_pilot_inference \
+  --limit 64 --block-length 20 --n-bootstrap 1000 --bootstrap-seed 42 \
+  --output-dir outputs/synthetic_comparisons/gaussian_pilot_comparison
+```
+
+An existing full 1,500-date Stage 4E-1 baseline directory is reusable without
+rerunning it. If unavailable, generate a matched small baseline with
+`benchmark_synthetic_forecasts.py --config <pilot-run>/config.yaml --n-scenarios 256
+--limit 64 --output-dir <new-directory>`. A 128-scenario pilot is not interchangeable
+with a 256-scenario diffusion forecast. Model-specific sampling seeds may differ.
+
+Inference copies source/config/scaler evidence and writes `forecast_metadata.json`
+with artifact hashes, checkpoint epoch/loss, declared/completed epoch counts,
+preliminary/completed-budget status, dates, units, seed, batch size, device and
+library versions. It verifies the saved scaler against reconstructed train-only
+moments without refitting. `last.pt` history takes precedence over possibly stale
+CSV history. A partial run is preliminary; full-budget status also requires a
+consistent summary. Missing or inconsistent metadata fails clearly.
+
+Comparison reconstructs canonical validation targets, verifies data settings and
+source fingerprints, checks exact observations/assets/dates and equal ensemble
+size, then uses the matching baseline prefix. Nothing is reordered, imputed,
+clipped or refitted. Numerical-library changes that alter source fingerprints
+must be investigated; source mismatches are not silently tolerated. New sampling
+is reproducible with identical settings in one environment, but batch size,
+last-batch size and CPU/GPU differences may change individual diffusion draws.
+
+Outputs are `comparison_report.json`, `per_date_scores.csv`,
+`paired_comparison.csv` and separate `calibration.csv` (50/80/90/95/99% coverage
+and absolute errors). Per-date CRPS and Energy Score use exactly the historical
+ensemble estimators. Differences are **diffusion minus baseline** (negative favors
+diffusion); reports retain both score means, absolute differences, relative
+improvement fractions and sample standard deviations of paired differences.
+
+The percentile 95% moving-block bootstrap samples overlapping non-circular
+contiguous blocks with replacement, truncates to the original series length and
+uses the same resampled dates for every paired series. Defaults are block length
+20 forecast observations, 1,000 replications and seed 42. Blocks longer than the
+series are rejected. It assumes approximately stationary differences and adequate
+block length; short pilots are exploratory. It conditions on saved ensembles and
+does not capture repeated Monte Carlo, training or checkpoint-selection uncertainty.
+
+**Validation selected the checkpoint. These comparisons are development evidence,
+not independent final generalization estimates or selection-adjusted significance.**
+The [Kaggle pilot notebook](notebooks/synthetic/synthetic_diffusion_comparison.ipynb)
+runs the two-epoch Gaussian workflow, accepts user-supplied baseline directories,
+and provides full training commands as unexecuted Markdown. To start meaningful
+training manually, use the original Gaussian/mean-reverting configs with separate
+`gaussian_full` / `mean_reverting_full` run directories and `--resume`, without the
+stopping flag. Do not infer forecast quality merely from completing 50 epochs.
+The held-out test partition remains untouched.
 
 ## Current experiments
 

@@ -14,6 +14,7 @@ from diffusion_portfolio.config import load_config
 from diffusion_portfolio.data import make_dataloaders
 from diffusion_portfolio.data.features import FeatureDataset, cached_features
 from diffusion_portfolio.data.preparation import prepare_return_data, save_standardizer
+from diffusion_portfolio.data.identity import COMPARISON_DATASETS, file_sha256, synthetic_data_identity
 from diffusion_portfolio.models.diffusion import PrecomputedConditionDiffusion
 from diffusion_portfolio.models.diffusion.build import build_diffusion
 from diffusion_portfolio.training.diffusion import fit_diffusion
@@ -90,6 +91,18 @@ def train_diffusion(config_path, output_dir, *, device="auto", resume=False,
         set_global_seed(cfg.seed, deterministic=False)
     device = resolve_device(device)
     datasets, scaler = prepare_return_data(cfg, standardizer_path=standardizer_path)
+    identity_path = None
+    if alpha is None and cfg.model.history_encoder == "mlp" and cfg.data.dataset in COMPARISON_DATASETS:
+        identity_path = output_dir / "data_identity.json"
+        identity = synthetic_data_identity(cfg, scaler)
+        if identity_path.exists():
+            recorded = json.loads(identity_path.read_text())
+            recorded.pop("checkpoint_sha256", None)
+            if recorded != identity:
+                raise ValueError("Existing training source identity differs from the requested configuration/data")
+        elif not any((output_dir / name).exists() for name in ("best.pt", "last.pt")):
+            # Never retrospectively certify a legacy checkpoint's source.
+            identity_path.write_text(json.dumps(identity, indent=2))
     loaders = make_dataloaders(
         datasets, batch_size=cfg.training.batch_size, seed=cfg.seed, num_workers=0
     )
@@ -110,6 +123,13 @@ def train_diffusion(config_path, output_dir, *, device="auto", resume=False,
         model, loaders.train, loaders.val, cfg, output_dir, device=device,
         resume=resume, stop_after_epoch=stop_after_epoch,
     )
+    if identity_path is not None and identity_path.exists():
+        # Bind completed chunks to their actual checkpoint bytes, outside the
+        # checkpoint schema. Interrupted chunks remain unverifiable until resumed.
+        identity_path.write_text(json.dumps({**identity, "checkpoint_sha256": {
+            name: file_sha256(output_dir / name) for name in ("best.pt", "last.pt")
+            if (output_dir / name).is_file()
+        }}, indent=2))
     if (stop_after_epoch is not None and result.history
             and result.history[-1].epoch < cfg.training.epochs):
         print("Training chunk complete. Resume checkpoint:", output_dir / "last.pt")
