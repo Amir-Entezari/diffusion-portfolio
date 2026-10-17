@@ -601,6 +601,83 @@ intervals condition on those ensembles and do not correct validation checkpoint
 selection. No held-out test evaluation is included. The notebook executes only
 K1/K60 two-epoch pilots by default; full-budget commands remain manual Markdown.
 
+## Denoiser capacity × historical context
+
+The [capacity notebook](notebooks/synthetic/synthetic_capacity_ablation.ipynb)
+adds a matched K1/K60 × Large/Small comparison. The new explicit config
+`configs/ablations/synthetic_ar1_capacity_small.yaml` differs from the 15-epoch
+context config **only** in score-network channels: `(16,32,64)` instead of
+`(32,64,128)`. The history MLP, conditioning/time dimensions, diffusion settings,
+optimizer, data and seeds stay fixed. No new model implementation is introduced.
+
+| Capacity | Total parameters | Denoiser parameters | History encoder parameters |
+|---|---:|---:|---:|
+| Large | 1,044,417 | 826,433 | 217,984 |
+| Small | 565,281 | 347,297 | 217,984 |
+
+The history encoder initializes identically under the shared seed. Different
+denoiser sizes have different tensor shapes; their weights are not identical or
+interchangeable. Existing immutable contracts already freeze channel widths and
+masks, so neither capacity nor K can be changed during resume/evaluation.
+Stage 4E-3A's identical-capacity diagnostic remains unchanged.
+
+Train only the Small arms, in isolated directories. Start with an absolute
+two-epoch pilot; remove the stopping flag to resume each to its original 15 epochs:
+
+```bash
+for k in 1 60; do
+  python -u scripts/train_diffusion.py \
+    --config configs/ablations/synthetic_ar1_capacity_small.yaml \
+    --history-keep-last "$k" --output-dir "outputs/synthetic_capacity/k${k}_small" \
+    --device cuda --resume --stop-after-epoch 2 || break
+done
+```
+
+Use `evaluate_diffusion.py --split validation --limit 64 --batch-size 16`
+with new pilot output directories. The companion CLI's `--pilot` accepts exactly
+`K1-Small` and `K60-Small` two-epoch archives, never completed Large models.
+The notebook defaults to these two pilots and provides full commands as Markdown.
+
+For the primary study, reuse completed Large checkpoints/forecasts and the
+compatible full statistical baselines. Evaluate completed Small best checkpoints
+on all 1,500 validation targets, omitting `--limit`, with batch size 16 and 256
+scenarios. Full comparison requires every canonical validation date and all four
+completed 15-epoch runs; it rejects all differences except channels and K.
+
+```bash
+python scripts/diagnose_capacity_ablation.py \
+  --baseline-dir outputs/synthetic_context/baselines_validation \
+  --diffusion-dirs \
+    K1-Large=outputs/synthetic_context/k1_validation_15epoch \
+    K60-Large=outputs/synthetic_context/k60_validation_15epoch \
+    K1-Small=outputs/synthetic_capacity/k1_small_validation_15epoch \
+    K60-Small=outputs/synthetic_capacity/k60_small_validation_15epoch \
+  --run-dirs \
+    K1-Large=outputs/synthetic_context/k1 K60-Large=outputs/synthetic_context/k60 \
+    K1-Small=outputs/synthetic_capacity/k1_small K60-Small=outputs/synthetic_capacity/k60_small \
+  --block-length 20 --n-bootstrap 1000 --bootstrap-seed 42 \
+  --output-dir outputs/synthetic_capacity/full_diagnostics
+```
+
+Original run directories supply loss histories verified against the hashes in
+saved forecast metadata. This avoids rewriting older Large forecast provenance.
+Missing/mismatched history fails clearly. Outputs include `capacity_report.json`,
+`summary.csv`, `calibration.csv`, `per_date_scores.csv`, `contrasts.csv`,
+`training_history.csv` and `loss_curves.png`; both selected/final train–validation
+gaps are reported. Historical artifacts are never overwritten.
+
+Planned capacity effects are Small minus Large within each K; context effects
+are K60 minus K1 within each capacity. The per-date interaction is
+`(K60-Small − K1-Small) − (K60-Large − K1-Large)`. Negative interaction narrows
+the signed K60-versus-K1 loss gap. One shared moving-block bootstrap resamples
+all planned contrasts, including the already formed interaction. Scores and
+finite-ensemble log-mean diagnostics reuse existing implementations.
+This is a denoiser-capacity study: nominal/effective history capacity is not
+reduced across Large/Small. Validation selection, one training seed and ensemble
+noise limit interpretation; block intervals do not correct those uncertainties.
+Training-objective gaps are descriptive, not directly comparable noise-free
+generalization errors. No held-out test evaluation is included.
+
 ## Current experiments
 
 ```bash
