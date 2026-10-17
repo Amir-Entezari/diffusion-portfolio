@@ -7,6 +7,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from diffusion_portfolio.models.encoders.history_mask import history_mask_policy
+
 from diffusion_portfolio.data.core import slice_return_table
 from diffusion_portfolio.data.registry import load_return_table
 
@@ -15,26 +17,51 @@ COMPARISON_DATASETS = {"synthetic_gaussian", "synthetic_mean_reverting"}
 ARITHMETIC_UNITS = "arithmetic decimal asset returns"
 
 
-def synthetic_training_contract(cfg):
+def synthetic_training_contract(cfg, *, history_mask=None):
     """Freeze the settings that define a Vanilla synthetic training experiment.
 
     Runtime device/resume/stop-after-epoch options are intentionally excluded:
     a two-epoch chunk must retain the original configured training budget.
     """
-    return json.loads(json.dumps({
+    contract = json.loads(json.dumps({
         "seed": cfg.seed, "data": asdict(cfg.data), "model": asdict(cfg.model),
         "optimizer": "torch.optim.AdamW", "training": asdict(cfg.training),
         "evaluation": asdict(cfg.evaluation),
     }))
+    if history_mask is not None:
+        if history_mask != history_mask_policy(cfg, history_mask.get("keep_last")):
+            raise ValueError("Invalid history-mask policy")
+        contract["history_mask"] = history_mask
+    return contract
 
 
 def require_training_contract(recorded, cfg):
     contract = recorded.get("training_contract")
     if contract is None:
         raise ValueError("Missing immutable training contract; legacy provenance cannot be retrospectively certified")
-    if contract != synthetic_training_contract(cfg):
+    if contract != synthetic_training_contract(cfg, history_mask=contract.get("history_mask")):
         raise ValueError("Immutable training contract differs from the requested/saved configuration; use the original configuration or a new run directory")
     return contract
+
+
+def saved_history_mask(run_dir, cfg):
+    """Restore the original mask; a small marker catches missing policy evidence.
+
+    Only ablation runs create experiment.json with history_mask. Legacy runs
+    with neither marker nor policy keep their original unmasked meaning.
+    Neither evidence file is repaired or retrospectively manufactured here.
+    """
+    run_dir = Path(run_dir)
+    identity_path, marker_path = run_dir / "data_identity.json", run_dir / "experiment.json"
+    recorded = json.loads(identity_path.read_text()) if identity_path.is_file() else {}
+    marker = json.loads(marker_path.read_text()) if marker_path.is_file() else {}
+    contract = recorded.get("training_contract", {})
+    policy = contract.get("history_mask")
+    if policy is not None or "history_mask" in marker:
+        require_training_contract(recorded, cfg)
+        if policy is None or marker.get("history_mask") != policy:
+            raise ValueError("History-mask policy differs or is missing from the original training contract/experiment marker")
+    return policy
 
 
 def file_sha256(path):

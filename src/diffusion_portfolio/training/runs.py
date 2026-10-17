@@ -17,7 +17,9 @@ from diffusion_portfolio.data.preparation import prepare_return_data, save_stand
 from diffusion_portfolio.data.identity import (
     COMPARISON_DATASETS, file_sha256, synthetic_data_identity,
     synthetic_training_contract, require_training_contract,
+    saved_history_mask,
 )
+from diffusion_portfolio.models.encoders.history_mask import history_mask_policy
 from diffusion_portfolio.models.diffusion import PrecomputedConditionDiffusion
 from diffusion_portfolio.models.diffusion.build import build_diffusion
 from diffusion_portfolio.training.diffusion import fit_diffusion
@@ -57,18 +59,30 @@ def git_commit():
 
 
 def train_diffusion(config_path, output_dir, *, device="auto", resume=False,
-                    stop_after_epoch=None, alpha=None, reference_run_dir=None):
+                    stop_after_epoch=None, alpha=None, reference_run_dir=None, history_keep_last=None):
     config_path, output_dir = Path(config_path), Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    cfg = None
+    cfg = load_config(config_path) if (history_keep_last is not None or (output_dir / "experiment.json").is_file()) else None
+    policy = history_mask_policy(cfg, history_keep_last)
+    if policy is not None and alpha is not None:
+        raise ValueError("History masking does not support Lévy experiments")
     provenance_path = output_dir / "data_identity.json"
     if provenance_path.is_file():
         cfg = load_config(config_path)
         recorded = json.loads(provenance_path.read_text())
         if "training_contract" in recorded:
             require_training_contract(recorded, cfg)
+            if recorded["training_contract"].get("history_mask") != policy:
+                raise ValueError("History-mask policy differs from the original training contract; resume with its original --history-keep-last")
             if alpha is not None:
                 raise ValueError("Immutable Vanilla training contract cannot be resumed as a Lévy process")
+    if cfg is not None:
+        saved_history_mask(output_dir, cfg)
+    if policy is not None and not provenance_path.exists() and any(
+            (output_dir / name).exists() for name in ("best.pt", "last.pt")):
+        raise ValueError("Cannot add a history-mask policy to legacy checkpoints")
+    if policy is not None and provenance_path.exists() and "training_contract" not in recorded:
+        raise ValueError("Cannot add a history-mask policy to legacy provenance")
     if alpha is None and resume and (output_dir / "summary.json").exists():
         print("Training already complete:", output_dir)
         return
@@ -117,14 +131,17 @@ def train_diffusion(config_path, output_dir, *, device="auto", resume=False,
             identity = recorded  # Retain the original contract, never replace it during resume.
         elif not any((output_dir / name).exists() for name in ("best.pt", "last.pt")):
             # Never retrospectively certify a legacy checkpoint's source.
-            identity["training_contract"] = synthetic_training_contract(cfg)
+            identity["training_contract"] = synthetic_training_contract(cfg, history_mask=policy)
             identity_path.write_text(json.dumps(identity, indent=2))
+        if policy is not None and not (output_dir / "experiment.json").exists():
+            (output_dir / "experiment.json").write_text(json.dumps({"history_mask": policy}, indent=2))
     loaders = make_dataloaders(
         datasets, batch_size=cfg.training.batch_size, seed=cfg.seed, num_workers=0
     )
     if alpha is not None:
         set_global_seed(cfg.seed, deterministic=False)
-    model = build_diffusion(cfg, n_assets=len(scaler.columns), alpha=alpha)
+    model = build_diffusion(cfg, n_assets=len(scaler.columns), alpha=alpha,
+                            **({"history_mask": policy} if policy is not None else {}))
     parameter_count = sum(p.numel() for p in model.parameters())
     if alpha is not None:
         set_global_seed(cfg.seed, deterministic=False)

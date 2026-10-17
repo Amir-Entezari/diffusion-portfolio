@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 
 from diffusion_portfolio.config import load_config
 from diffusion_portfolio.data import collate_return_batch, ReturnWindowDataset, WindowedReturns
-from diffusion_portfolio.data.identity import COMPARISON_DATASETS, file_sha256, require_training_contract
+from diffusion_portfolio.data.identity import COMPARISON_DATASETS, file_sha256, require_training_contract, saved_history_mask
 from diffusion_portfolio.data.features import FeatureDataset, cached_features
 from diffusion_portfolio.data.preparation import prepare_return_data, load_standardizer
 from diffusion_portfolio.evaluation.probabilistic import evaluate_probabilistic_forecast, require_finite_arithmetic_moments
@@ -41,6 +41,9 @@ def evaluate_diffusion(run_dir, *, batch_size=32, device="auto", split="validati
         raise FileExistsError(f"Inference output directory must be empty or absent: {destination}")
     source_dir = Path(cde_run_dir) if variant is not None else run_dir
     cfg = load_config(source_dir / "config.yaml")
+    history_mask = saved_history_mask(source_dir, cfg)
+    if history_mask is not None and (split != "validation" or variant is not None):
+        raise ValueError("History-mask ablations support ordinary validation evaluation only")
     provenance_path = source_dir / "data_identity.json"
     if provenance_path.is_file():
         recorded = json.loads(provenance_path.read_text())
@@ -80,7 +83,8 @@ def evaluate_diffusion(run_dir, *, batch_size=32, device="auto", split="validati
         if dates[-1] > np.datetime64(cfg.data.val_end):
             raise RuntimeError("Validation extends past val_end")
     if variant is None:
-        model = build_diffusion(cfg, n_assets=len(scaler.columns), alpha=alpha).to(device)
+        model = build_diffusion(cfg, n_assets=len(scaler.columns), alpha=alpha,
+                                **({"history_mask": history_mask} if history_mask is not None else {})).to(device)
         loader = DataLoader(
             dataset, batch_size=batch_size, shuffle=False, num_workers=0,
             collate_fn=collate_return_batch, drop_last=False,
@@ -101,7 +105,7 @@ def evaluate_diffusion(run_dir, *, batch_size=32, device="auto", split="validati
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
     provenance = None
-    if (output_dir is not None and split == "validation" and cfg.data.dataset in COMPARISON_DATASETS
+    if ((output_dir is not None or history_mask is not None) and split == "validation" and cfg.data.dataset in COMPARISON_DATASETS
             and variant is None):
         if alpha is not None:
             raise ValueError("Synthetic comparison supports Vanilla Gaussian diffusion only")
@@ -150,8 +154,9 @@ def evaluate_diffusion(run_dir, *, batch_size=32, device="auto", split="validati
         result.update(evaluation_limit=limit, available_samples=available, sampling_device=str(device), sampling_seconds=elapsed)
     (destination / f"{split}_probabilistic_metrics.json").write_text(json.dumps(result, indent=2))
     if provenance is not None:
-        for name in ("config.yaml", "standardizer.npz", "data_identity.json"):
-            shutil.copy2(run_dir / name, destination / name)
+        for name in ("config.yaml", "standardizer.npz", "data_identity.json") + (("experiment.json",) if history_mask is not None else ()):
+            if destination.resolve() != run_dir.resolve():
+                shutil.copy2(run_dir / name, destination / name)
         metadata = {
             **provenance, "model_kind": "vanilla_diffusion", "split": "validation", "n_dates": len(dataset),
             "target_dates": [str(date.date()) for date in dates], "n_scenarios": cfg.evaluation.n_scenarios,
@@ -162,6 +167,8 @@ def evaluate_diffusion(run_dir, *, batch_size=32, device="auto", split="validati
             "archive_sha256": file_sha256(destination / "validation_scenarios.npz"),
             "sampling_note": "Reproducible with identical settings/environment; batch size, limit (last batch), or device can change individual draws.",
         }
+        if history_mask is not None:
+            metadata["history_mask"] = history_mask
         (destination / "forecast_metadata.json").write_text(json.dumps(metadata, indent=2, allow_nan=False))
     print("CRPS:", result["crps_mean"], "Energy Score:", result["energy_score"])
     return result

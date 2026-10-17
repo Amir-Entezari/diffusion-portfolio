@@ -10,6 +10,8 @@ def parse_args():
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--stop-after-epoch", type=int, default=None)
+    parser.add_argument("--history-keep-last", type=int, default=None,
+                        help="Controlled AR(1) ablation: keep the last K standardized observations in a 60-day MLP history")
     parser.add_argument("--alpha", type=float, default=None)
     parser.add_argument("--reference-run-dir", default="/kaggle/working/phase0_cde")
     return parser.parse_args()
@@ -22,4 +24,5 @@ if __name__ == "__main__":
         args.output_dir, device=args.device, resume=args.resume,
         stop_after_epoch=args.stop_after_epoch, alpha=args.alpha,
         reference_run_dir=args.reference_run_dir,
+        history_keep_last=args.history_keep_last,
     )

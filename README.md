@@ -524,6 +524,83 @@ training manually, use the original Gaussian/mean-reverting configs with separat
 stopping flag. Do not infer forecast quality merely from completing 50 epochs.
 The held-out test partition remains untouched.
 
+## Controlled historical-context ablation
+
+The [context notebook](notebooks/synthetic/synthetic_history_ablation.ipynb)
+studies `synthetic_mean_reverting` with K0/K1/K5/K60 available observations.
+`configs/ablations/synthetic_ar1_context.yaml` changes **only** the original
+mean-reverting configuration's epoch budget from 50 to a predeclared 15.
+Every arm retains the 60-day window, 12 assets, source seed, training seed,
+targets, splits, scaler, MLP shape/parameter count, optimizer and v-prediction
+objective. Fifteen epochs is a diagnostic budget, not a tuned optimum.
+
+`--history-keep-last K` attaches a parameter-free encoder pre-hook. It replaces
+earlier **standardized** history with zeros (the fitted training mean), without
+mutating inputs or masking targets. The same hook runs during training,
+validation loss and sampling. K60 is exactly the unmasked numerical path.
+The optional mask is recorded in the immutable training contract, with original
+lookback, effective history and convention; historical contracts gain no fields.
+A small ablation-only `experiment.json` marker also rejects missing policy
+evidence. Resume must specify the original K; evaluation restores it automatically.
+No checkpoint tensor keys change, and no legacy checkpoint is certified or migrated.
+Keep both provenance files with the checkpoints and inference outputs.
+
+Two-epoch execution pilot (repeat the commands with K60 and its separate directory):
+
+```bash
+python -u scripts/train_diffusion.py \
+  --config configs/ablations/synthetic_ar1_context.yaml --history-keep-last 1 \
+  --output-dir outputs/synthetic_context/k1 --device cuda --resume --stop-after-epoch 2
+python -u scripts/evaluate_diffusion.py --run-dir outputs/synthetic_context/k1 \
+  --split validation --limit 64 --batch-size 16 --device cuda \
+  --output-dir outputs/synthetic_context/k1_pilot_inference
+python scripts/compare_synthetic_forecasts.py \
+  --baseline-dir <existing-compatible-mean-reverting-baselines> \
+  --diffusion-dir outputs/synthetic_context/k1_pilot_inference \
+  --block-length 20 --n-bootstrap 1000 --bootstrap-seed 42 \
+  --output-dir outputs/synthetic_context/k1_pilot_comparison
+```
+
+Existing full statistical archives remain reusable with unchanged source, dates,
+observations, asset order and 256 scenarios. Otherwise generate a small matched
+baseline with `benchmark_synthetic_forecasts.py --config
+configs/ablations/synthetic_ar1_context.yaml --n-scenarios 256 --limit 64
+--output-dir <new-baseline-directory>`. Statistical models receive actual
+unmasked observable history. The source/alignment checks are unchanged.
+
+For the matched 15-epoch study, use the same training command **without**
+`--stop-after-epoch`, independently for `--history-keep-last 0`, `1`, `5` and `60`
+with `k0`, `k1`, `k5`, `k60` directories. K1/K60 resume their pilots to the
+original 15-epoch budget. Evaluate each best checkpoint into a new directory
+(omit `--limit` for all validation dates), and run the paired baseline tool per arm.
+Do not mix the historical 50-epoch K60 run into this primary comparison.
+
+```bash
+python scripts/diagnose_history_ablation.py --baseline-dir <baseline-directory> \
+  --diffusion-dirs K1=outputs/synthetic_context/k1_pilot_inference K60=outputs/synthetic_context/k60_pilot_inference \
+  --block-length 20 --n-bootstrap 1000 --bootstrap-seed 42 \
+  --output-dir outputs/synthetic_context/pilot_diagnostics
+pytest -q tests/unit/test_history_ablation.py tests/unit/test_synthetic_diffusion_comparison.py
+```
+
+The archive-only diagnostic verifies original contracts and exact target alignment;
+add K0/K5 archives for all six paired arm comparisons. It averages `log1p` scenarios
+to estimate predictive log means, demeans history and predictive means **per asset**
+across dates before pooling the lag slope, and reports predictive log-mean MSE.
+CRPS/Energy Score/calibration retain their arithmetic-return definitions. It saves
+`summary.csv`, `per_date_scores.csv`, `paired_context.csv`, `calibration.csv` and
+`diagnostics.json`, including best epoch/loss, final losses, completed budget and
+parameter count. Arm contracts, dates, scenario counts and completed budgets must
+match exactly. No automatic intersection or historical-budget substitution occurs.
+
+K0 showing weak direct lag dependence, K1 helping a one-lag process, and longer
+contexts complicating learning are **hypotheses**. Primary outcomes are CRPS,
+Energy Score and predictive-mean MSE; lag slope and train/validation divergence
+are explanatory diagnostics. Means are finite-ensemble estimates. Paired block
+intervals condition on those ensembles and do not correct validation checkpoint
+selection. No held-out test evaluation is included. The notebook executes only
+K1/K60 two-epoch pilots by default; full-budget commands remain manual Markdown.
+
 ## Current experiments
 
 ```bash

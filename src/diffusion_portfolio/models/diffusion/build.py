@@ -2,7 +2,12 @@
 from diffusion_portfolio.models.diffusion.model import ConditionalDiffusionModel
 
 
-def build_diffusion(cfg, *, n_assets: int, alpha=None, precomputed=False):
+def build_diffusion(cfg, *, n_assets: int, alpha=None, precomputed=False, history_mask=None):
+    if history_mask is not None:
+        from diffusion_portfolio.models.encoders.history_mask import history_mask_policy
+
+        if alpha is not None or precomputed or history_mask != history_mask_policy(cfg, history_mask.get("keep_last")):
+            raise ValueError("History mask supports ordinary Vanilla synthetic diffusion only")
     model = cfg.model
     kwargs = dict(
         lookback=cfg.data.lookback,
@@ -35,4 +40,9 @@ def build_diffusion(cfg, *, n_assets: int, alpha=None, precomputed=False):
         if model.prediction_type != "epsilon":
             raise ValueError("Lévy experiments require epsilon prediction")
         return ConditionalLevyDiffusionModel(alpha=alpha, **kwargs)
-    return ConditionalDiffusionModel(prediction_type=model.prediction_type, **kwargs)
+    result = ConditionalDiffusionModel(prediction_type=model.prediction_type, **kwargs)
+    if history_mask is not None:
+        from diffusion_portfolio.models.encoders.history_mask import attach_history_mask
+
+        attach_history_mask(result, history_mask)
+    return result

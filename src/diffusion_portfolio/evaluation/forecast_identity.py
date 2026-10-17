@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from diffusion_portfolio.data.identity import file_sha256, synthetic_data_identity, require_training_contract
+from diffusion_portfolio.data.identity import file_sha256, synthetic_data_identity, require_training_contract, saved_history_mask
 from diffusion_portfolio.utils.research_checks import check_checkpoint_pair
 
 
@@ -21,6 +21,7 @@ def verify_synthetic_checkpoint(run_dir, cfg, scaler, checkpoint):
     identity = synthetic_data_identity(cfg, scaler)
     recorded = json.loads(path.read_text())
     contract = require_training_contract(recorded, cfg)
+    policy = saved_history_mask(run_dir, cfg)
     recorded.pop("training_contract")
     checkpoint_hashes = recorded.pop("checkpoint_sha256", {})
     if recorded != identity:
@@ -60,9 +61,18 @@ def verify_synthetic_checkpoint(run_dir, cfg, scaler, checkpoint):
         "status": "completed_declared_budget" if completed else "preliminary",
         "completed_epochs": last_epoch, "configured_epochs": cfg.training.epochs,
         "checkpoint_epoch": best_epoch, "checkpoint_val_loss": best_loss,
+        "final_train_loss": float(history.train_loss.iloc[-1]),
+        "final_val_loss": float(history.val_loss.iloc[-1]),
         "note": "Training budget completion is not evidence of forecast quality; validation selected this checkpoint.",
     }
+    # Counting parameters must not consume the caller's training/sampling RNG.
+    from diffusion_portfolio.models.diffusion.build import build_diffusion
+    with torch.random.fork_rng(devices=[]):
+        model = build_diffusion(cfg, n_assets=len(scaler.columns))
+    training["parameter_count"] = sum(p.numel() for p in model.parameters())
     hashes = {name: file_sha256(run_dir / name) for name in
               ("config.yaml", "standardizer.npz", "best.pt", "data_identity.json", "last.pt", "summary.json", "history.csv")
               if (run_dir / name).is_file()}
+    if policy is not None:
+        hashes["experiment.json"] = file_sha256(run_dir / "experiment.json")
     return {**identity, "training_contract": contract, "training_run": training, "checkpoint_files_sha256": hashes}

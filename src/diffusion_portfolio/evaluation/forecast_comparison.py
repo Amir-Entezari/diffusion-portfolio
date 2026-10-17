@@ -2,12 +2,13 @@
 from dataclasses import asdict
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 
 from diffusion_portfolio.config import load_config
-from diffusion_portfolio.data.identity import ARITHMETIC_UNITS, file_sha256, synthetic_data_identity, require_training_contract
+from diffusion_portfolio.data.identity import ARITHMETIC_UNITS, file_sha256, synthetic_data_identity, require_training_contract, saved_history_mask
 from diffusion_portfolio.data.preparation import load_standardizer, prepare_return_data
 from diffusion_portfolio.evaluation.probabilistic import (
     crps_by_date, energy_score_by_date, evaluate_probabilistic_forecast,
@@ -92,12 +93,13 @@ def _archive(path, report, *, columns, canonical, n_scenarios):
     return samples, observed, dates
 
 
-def compare_synthetic_forecasts(baseline_dir, diffusion_dir, *, output_dir, limit=None,
-                                block_length=20, n_bootstrap=1000, bootstrap_seed=42):
-    """Compare saved ensembles only; no training, sampling or baseline refitting."""
-    baseline_dir, diffusion_dir, output = map(Path, (baseline_dir, diffusion_dir, output_dir))
-    if output.exists() and (not output.is_dir() or any(output.iterdir())):
-        raise FileExistsError(f"Comparison output must be empty or absent: {output}")
+def load_matched_synthetic_forecasts(baseline_dir, diffusion_dir, *, limit=None):
+    """Load strictly verified saved ensembles, shared by comparisons/diagnostics.
+
+    No training, forecasting or statistical refitting. A full baseline archive
+    may supply the exact chronological prefix of a limited diffusion archive.
+    """
+    baseline_dir, diffusion_dir = Path(baseline_dir), Path(diffusion_dir)
     if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int) or limit < 2):
         raise ValueError("Comparison limit must be an integer >= 2")
     baseline = _read_json(baseline_dir / "report.json")
@@ -126,6 +128,9 @@ def compare_synthetic_forecasts(baseline_dir, diffusion_dir, *, output_dir, limi
     contract = require_training_contract(recorded_identity, cfg)
     if diffusion["training_contract"] != contract:
         raise ValueError("Diffusion metadata differs from the immutable training contract")
+    policy = saved_history_mask(diffusion_dir, cfg)
+    if diffusion.get("history_mask") != policy:
+        raise ValueError("Diffusion forecast history-mask policy differs from the original training contract")
     recorded_identity.pop("training_contract")
     recorded_checkpoints = recorded_identity.pop("checkpoint_sha256", {})
     if recorded_identity != identity:
@@ -146,6 +151,9 @@ def compare_synthetic_forecasts(baseline_dir, diffusion_dir, *, output_dir, limi
     for name in ("config.yaml", "standardizer.npz", "data_identity.json"):
         if file_sha256(diffusion_dir / name) != hashes[name]:
             raise ValueError(f"Diffusion saved file differs from the evaluated checkpoint provenance: {name}")
+    if policy is not None:
+        if hashes.get("experiment.json") != file_sha256(diffusion_dir / "experiment.json"):
+            raise ValueError("History-mask experiment marker differs from the evaluated provenance")
     training = diffusion["training_run"]
     _require(training, ("status", "completed_epochs", "configured_epochs", "checkpoint_epoch", "checkpoint_val_loss"), "training readiness")
     if (training["status"] not in ("preliminary", "completed_declared_budget")
@@ -182,6 +190,22 @@ def compare_synthetic_forecasts(baseline_dir, diffusion_dir, *, output_dir, limi
             raise ValueError(f"Paired dates/observations do not match for {name}")
         forecasts[name] = x[:count]
         inputs[name] = file_sha256(path)
+    return SimpleNamespace(cfg=cfg, canonical=canonical, metadata=diffusion,
+                           identity=identity, contract=contract, hashes=hashes, training=training,
+                           forecasts=forecasts, observed=observed, dates=dates, inputs=inputs)
+
+
+def compare_synthetic_forecasts(baseline_dir, diffusion_dir, *, output_dir, limit=None,
+                                block_length=20, n_bootstrap=1000, bootstrap_seed=42):
+    """Compare saved ensembles only; no training, sampling or baseline refitting."""
+    output = Path(output_dir)
+    if output.exists() and (not output.is_dir() or any(output.iterdir())):
+        raise FileExistsError(f"Comparison output must be empty or absent: {output}")
+    matched = load_matched_synthetic_forecasts(baseline_dir, diffusion_dir, limit=limit)
+    cfg, identity, contract = matched.cfg, matched.identity, matched.contract
+    hashes, training, inputs = matched.hashes, matched.training, matched.inputs
+    forecasts, observed, dates = matched.forecasts, matched.observed, matched.dates
+    count, n_scenarios = len(dates), matched.metadata["n_scenarios"]
     scores, metrics = {}, {}
     for name, forecast in forecasts.items():
         scores[name] = {"crps": crps_by_date(forecast, observed), "energy_score": energy_score_by_date(forecast, observed)}
