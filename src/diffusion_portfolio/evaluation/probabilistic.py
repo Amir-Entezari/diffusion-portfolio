@@ -5,8 +5,8 @@ Forecast samples follow the contract:
     forecast_samples: [time, samples, assets]
     observed:         [time, assets]
 
-All values should be expressed in raw decimal excess-return units before
-calling these metrics.
+All values must use the same raw arithmetic decimal-return convention before
+calling these metrics (asset or excess returns according to preprocessing).
 """
 
 from __future__ import annotations
@@ -24,6 +24,16 @@ DEFAULT_COVERAGE_LEVELS = (
     0.95,
     0.99,
 )
+
+
+def require_finite_arithmetic_moments(dataset_name):
+    """Guard config-aware scoring, without restricting log-space diagnostics."""
+    if dataset_name == "synthetic_student_t":
+        raise ValueError(
+            "synthetic_student_t has no finite positive arithmetic-return population moments after expm1; "
+            "ordinary CRPS/Energy Score and portfolio comparisons are unsupported. "
+            "Use its log-return mathematical diagnostics instead; do not clip or truncate tails."
+        )
 
 
 @dataclass(frozen=True)

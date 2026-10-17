@@ -10,7 +10,7 @@ from diffusion_portfolio.config import load_config
 from diffusion_portfolio.data import collate_return_batch
 from diffusion_portfolio.data.features import FeatureDataset, cached_features
 from diffusion_portfolio.data.preparation import prepare_return_data, load_standardizer
-from diffusion_portfolio.evaluation.probabilistic import evaluate_probabilistic_forecast
+from diffusion_portfolio.evaluation.probabilistic import evaluate_probabilistic_forecast, require_finite_arithmetic_moments
 from diffusion_portfolio.evaluation.scenarios import (
     generate_scenarios, probabilistic_summary, save_scenarios, seed_sampling,
 )
@@ -28,6 +28,7 @@ def evaluate_diffusion(run_dir, *, batch_size=32, device="auto", split="validati
     run_dir = Path(run_dir)
     source_dir = Path(cde_run_dir) if variant is not None else run_dir
     cfg = load_config(source_dir / "config.yaml")
+    require_finite_arithmetic_moments(cfg.data.dataset)
     device = resolve_device(device)
     experiment_path = run_dir / "experiment.json"
     experiment = json.loads(experiment_path.read_text()) if experiment_path.exists() else {}

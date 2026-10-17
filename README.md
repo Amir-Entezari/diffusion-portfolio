@@ -352,6 +352,82 @@ python -m compileall src scripts
 pytest -q
 ```
 
+## Controlled synthetic forecast baselines
+
+`scripts/benchmark_synthetic_forecasts.py` compares three joint Gaussian forecasts
+on identical validation targets. It fits unique chronological training observations
+in observable log space, `x=log1p(r)`, samples joint log returns, then scores
+`expm1(x)` arithmetic decimal scenarios with the existing CRPS, Energy Score and
+interval calibration implementation. Hidden simulator state is never an input.
+
+- **Gaussian:** training MLE mean and covariance, with divisor T; parameters freeze
+  at `train_end`.
+- **AR(1):** `x_next=c+phi*x+epsilon`, one pooled scalar phi and asset-specific
+  intercepts. OLS demeans training predictors/responses separately; stationary
+  mean is `mu=c/(1-phi)`. Nonstationary fits (`abs(phi)>=1`) fail rather than being
+  clipped. Covariance is the MLE of fitted one-step residuals, not marginal return
+  covariance. Training pairs spanning long calendar gaps are excluded.
+- **EWMA:** initialize from the training MLE at `train_end`, then update each newly
+  observed log return once, with fixed default decay lambda=0.94:
+  `d=x-m_old`, `m_new=m_old+(1-lambda)*d`,
+  `C_new=lambda*C_old+lambda*(1-lambda)*d*d.T`. This is the centered covariance
+  of an exponential mixture and preserves PSD. Earlier validation observations
+  may update the state; the current target never enters its own forecast.
+
+Gaussian/AR fits use all original float64 training rows, including the initial
+lookback, without duplicating overlapping windows. AR prediction uses the last
+observable return in the shared raw history window. EWMA consumes all available
+post-training source observations strictly before each target, including dates
+omitted by window segmentation. Scored targets retain the shared pipeline's
+float32 representation; scenarios are float64 arithmetic returns.
+
+Sampling uses a PSD eigensquare root without a ridge. Only negative eigenvalues
+within `100*float64_eps*spectral_scale` of zero are corrected; materially indefinite
+covariances fail. Invalid returns (`r<=-1`), nonfinite values and unrepresentable
+samples fail; return tails are never clipped. Separate PCG64 streams keyed by
+seed, fixed model ID and target-date ordinal make model order and validation-limit
+changes preserve forecasts for common dates in the same numerical environment.
+
+```bash
+python scripts/benchmark_synthetic_forecasts.py \
+  --config configs/synthetic_gaussian.yaml \
+  --models gaussian,ar1,ewma --split validation \
+  --n-scenarios 128 --limit 64 --seed 42 \
+  --output-dir outputs/synthetic_benchmarks/gaussian_pilot
+
+python scripts/benchmark_synthetic_forecasts.py \
+  --config configs/synthetic_mean_reverting.yaml \
+  --models gaussian,ar1,ewma --split validation \
+  --n-scenarios 128 --limit 64 --seed 42 \
+  --output-dir outputs/synthetic_benchmarks/ar1_pilot
+
+pytest -q tests/unit/test_statistical_baselines.py tests/unit/test_synthetic_forecast_benchmarks.py
+```
+
+`--limit` selects the first N available validation targets; omit it for all
+validation dates. Output directories must be empty or absent. Each run writes
+resolved `config.yaml`, train-fitted `standardizer.npz`, `report.json`,
+`comparison.csv`, and per-model `validation_scenarios.npz` (existing keys:
+`scenarios`, `observed`, `dates`, `columns`) and probabilistic metric JSON.
+Reports include source/config fingerprints, fitted parameters, seeds, dates,
+units, runtime, per-asset CRPS and absolute calibration error. The scaler is
+saved for pipeline compatibility; statistical fits use unstandardized logs.
+
+Supported sources are Gaussian, mean-reverting, regime, regime-jump and whipsaw.
+**Student-t is rejected** because exponentiation gives infinite positive
+population moments; its log-space diagnostics remain available. Config-aware
+diffusion/portfolio scoring also rejects this source. Array-only metric functions
+cannot infer source identity. No held-out test evaluation or diffusion training
+is included. Comparison with saved diffusion scenarios is deferred until exact
+source/configuration, target-date, asset-order and observation matches are verified.
+
+The [CPU Kaggle demo](notebooks/synthetic/synthetic_forecast_benchmarks.ipynb)
+runs small Gaussian and AR pilots, displays saved metrics and a preselected example
+distribution. Finite-ensemble scores have Monte Carlo error; small pilots do not
+establish significance. Multi-seed uncertainty analysis is deferred. These
+comparisons may favor correctly specified statistical models; no diffusion
+advantage is presumed.
+
 ## Current experiments
 
 ```bash

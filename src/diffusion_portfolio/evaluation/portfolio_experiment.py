@@ -10,6 +10,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from diffusion_portfolio.config import load_config
+from diffusion_portfolio.evaluation.probabilistic import require_finite_arithmetic_moments
 from diffusion_portfolio.data import load_daily_risk_free
 from diffusion_portfolio.evaluation import (
     evaluate_portfolio,
@@ -180,6 +181,7 @@ def run_portfolio_evaluation(args) -> None:
     cfg = load_config(
         config_path
     )
+    require_finite_arithmetic_moments(cfg.data.dataset)
 
     archive = np.load(
         scenario_path,
